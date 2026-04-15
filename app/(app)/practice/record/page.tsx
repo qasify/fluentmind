@@ -1,564 +1,445 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import styles from "./page.module.css";
+import { useAppStore } from "@/lib/store";
 
-// ---- Types ----
-interface PauseData {
-  startMs: number;
-  endMs: number;
-  durationMs: number;
+// Extended Window interface for Web Speech API
+interface SpeechRecognitionEvent extends Event {
+  resultIndex: number;
+  results: SpeechRecognitionResultList;
 }
 
-interface AudioMetadata {
-  totalDurationSeconds: number;
-  speakingTimeSeconds: number;
-  silenceTimeSeconds: number;
+interface SpeechRecognitionErrorEvent extends Event {
+  error: "no-speech" | "audio-capture" | "not-allowed" | "network" | "aborted" | "language-not-supported" | "service-not-allowed" | "bad-grammar";
+  message: string;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onresult: (event: SpeechRecognitionEvent) => void;
+  onerror: (event: SpeechRecognitionErrorEvent) => void;
+  onend: () => void;
+  onstart: () => void;
+}
+
+interface SpeechRecognitionConstructor {
+  new (): SpeechRecognition;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  }
+}
+
+type RecordingState = "idle" | "recording" | "processing" | "completed";
+
+// Types for our local audio engine
+interface AudioAnalysis {
   pauseCount: number;
-  pauses: PauseData[];
-  averagePauseDurationMs: number;
-  wpm: number;
+  totalSilenceSeconds: number;
+  speakingSeconds: number;
 }
-
-// ---- Default Topics ----
-const defaultTopics = [
-  {
-    category: "Daily Life",
-    text: "Describe a time you solved a difficult problem",
-    framework: "STAR",
-    duration: "2-3 min",
-    difficulty: "Intermediate",
-  },
-  {
-    category: "Abstract",
-    text: "Is social media making us more connected or more isolated?",
-    framework: "PREP",
-    duration: "2-3 min",
-    difficulty: "Intermediate",
-  },
-  {
-    category: "Professional",
-    text: "Explain your current role to someone outside your industry",
-    framework: "PREP",
-    duration: "2-3 min",
-    difficulty: "Intermediate",
-  },
-  {
-    category: "IELTS Part 2",
-    text: "Describe a skill you would like to learn in the future",
-    framework: "STAR",
-    duration: "2 min",
-    difficulty: "Intermediate",
-  },
-  {
-    category: "Daily Life",
-    text: "Talk about a meal that you really enjoyed recently",
-    framework: "AAA",
-    duration: "1-2 min",
-    difficulty: "Beginner",
-  },
-];
-
-const WAVEFORM_BARS = 50;
 
 export default function RecordPage() {
   const router = useRouter();
+  const { addSession, addXp, updateStreak } = useAppStore();
 
-  // ---- Topic State ----
-  const [currentTopic, setCurrentTopic] = useState(defaultTopics[0]);
-  const [showTopicPicker, setShowTopicPicker] = useState(false);
-
-  // ---- Recording State ----
-  const [isRecording, setIsRecording] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
+  const [state, setState] = useState<RecordingState>("idle");
+  const [topic, setTopic] = useState("Describe your ideal weekend");
+  const [category, setCategory] = useState("Daily Life");
+  
+  // Timer state
+  const [timerDisplay, setTimerDisplay] = useState("00:00");
+  const [secondsElapsed, setSecondsElapsed] = useState(0);
+  
+  // Transcript
   const [transcript, setTranscript] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [waveformData, setWaveformData] = useState<number[]>(
-    new Array(WAVEFORM_BARS).fill(4)
-  );
+  const [interimTranscript, setInterimTranscript] = useState("");
+  
+  // Visualizer DB level
+  const [dbLevel, setDbLevel] = useState(0);
 
-  // ---- Refs ----
+  // Refs for underlying engines
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+
+  // Audio Analysis Refs
+  const audioAnalysisRef = useRef<AudioAnalysis>({
+    pauseCount: 0,
+    totalSilenceSeconds: 0,
+    speakingSeconds: 0,
+  });
+  const isSilentRef = useRef(true);
+  const silenceStartRef = useRef<number>(0);
   const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const animFrameRef = useRef<number | null>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  // ---- Pause tracking ----
-  const pauseStartRef = useRef<number | null>(null);
-  const pausesRef = useRef<PauseData[]>([]);
-  const silenceThreshold = 15; // RMS threshold for silence
-  const minPauseDuration = 800; // min ms to count as a pause
-  const recordingStartTimeRef = useRef<number>(0);
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopRecordingEngine();
+    };
+  }, []);
 
-  // ---- Format time ----
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60)
-      .toString()
-      .padStart(2, "0");
-    const s = (seconds % 60).toString().padStart(2, "0");
-    return `${m}:${s}`;
+  const initSpeechRecognition = () => {
+    const SpeechRecognitionAPI =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognitionAPI) {
+      alert("Speech Recognition is not supported in this browser. Please use Chrome.");
+      return null;
+    }
+
+    const recognition = new SpeechRecognitionAPI();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (event) => {
+      let finalStr = "";
+      let interimStr = "";
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalStr += event.results[i][0].transcript + " ";
+        } else {
+          interimStr += event.results[i][0].transcript;
+        }
+      }
+
+      if (finalStr) {
+        setTranscript((prev) => prev + finalStr);
+      }
+      setInterimTranscript(interimStr);
+    };
+
+    recognition.onerror = (event) => {
+      console.error("Speech recognition error", event.error);
+    };
+
+    recognition.onend = () => {
+      if (state === "recording") {
+        recognition.start(); // auto-restart if still recording but timeout hit
+      }
+    };
+
+    return recognition;
   };
 
-  // ---- Waveform Animation ----
-  const updateWaveform = useCallback(() => {
+  const processAudioVisualizer = useCallback(() => {
     if (!analyserRef.current) return;
 
     const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
     analyserRef.current.getByteFrequencyData(dataArray);
 
-    // Calculate RMS for pause detection
-    const rms = Math.sqrt(
-      dataArray.reduce((sum, val) => sum + val * val, 0) / dataArray.length
-    );
+    let sum = 0;
+    for (let i = 0; i < dataArray.length; i++) {
+      sum += dataArray[i];
+    }
+    const average = sum / dataArray.length;
+    // Map to a roughly 0-100 scale for CSS
+    const scaled = Math.min(100, (average / 256) * 200);
+    setDbLevel(scaled);
 
-    // Pause detection
+    const RMS_SILENCE_THRESHOLD = 15; // Tunable
     const now = Date.now();
-    if (rms < silenceThreshold) {
-      if (!pauseStartRef.current) {
-        pauseStartRef.current = now;
+
+    if (scaled < RMS_SILENCE_THRESHOLD) {
+      if (!isSilentRef.current) {
+        isSilentRef.current = true;
+        silenceStartRef.current = now;
       }
     } else {
-      if (pauseStartRef.current) {
-        const duration = now - pauseStartRef.current;
-        if (duration >= minPauseDuration) {
-          pausesRef.current.push({
-            startMs: pauseStartRef.current - recordingStartTimeRef.current,
-            endMs: now - recordingStartTimeRef.current,
-            durationMs: duration,
-          });
+      if (isSilentRef.current) {
+        isSilentRef.current = false;
+        const silenceDuration = (now - silenceStartRef.current) / 1000;
+        if (silenceDuration > 1.5) {
+          audioAnalysisRef.current.pauseCount += 1;
         }
-        pauseStartRef.current = null;
+        audioAnalysisRef.current.totalSilenceSeconds += Math.min(silenceDuration, 20); // cap max silence
       }
     }
 
-    // Sample bars from frequency data
-    const step = Math.floor(dataArray.length / WAVEFORM_BARS);
-    const bars: number[] = [];
-    for (let i = 0; i < WAVEFORM_BARS; i++) {
-      const value = dataArray[i * step] || 0;
-      const height = Math.max(4, (value / 255) * 70);
-      bars.push(height);
-    }
-
-    setWaveformData(bars);
-    animFrameRef.current = requestAnimationFrame(updateWaveform);
+    animationFrameRef.current = requestAnimationFrame(processAudioVisualizer);
   }, []);
 
-  // ---- Start Recording ----
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-
-      // Audio context for waveform
-      const audioContext = new AudioContext();
-      audioContextRef.current = audioContext;
-      const source = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
+      
+      // 1. Setup Audio Context & Visualizer
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 256;
       source.connect(analyser);
+      
+      audioContextRef.current = audioCtx;
       analyserRef.current = analyser;
-
-      // Media recorder
+      
+      // 2. Setup MediaRecorder for blob saving
       const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
-
       mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
+        if (e.data.size > 0) chunksRef.current.push(e.data);
       };
+      mediaRecorderRef.current = mediaRecorder;
+      
+      // 3. Setup Transcription
+      const recognition = initSpeechRecognition();
+      if (recognition) {
+        recognitionRef.current = recognition;
+        recognition.start();
+      }
 
-      mediaRecorder.start(1000); // Collect data every second
-
-      // Start speech recognition
-      startSpeechRecognition();
-
-      // Reset state
-      setIsRecording(true);
-      setIsPaused(false);
-      setRecordingTime(0);
+      // Reset state variables
       setTranscript("");
-      pausesRef.current = [];
-      pauseStartRef.current = null;
-      recordingStartTimeRef.current = Date.now();
+      setInterimTranscript("");
+      setSecondsElapsed(0);
+      setTimerDisplay("00:00");
+      audioAnalysisRef.current = { pauseCount: 0, totalSilenceSeconds: 0, speakingSeconds: 0 };
+      isSilentRef.current = true;
+      silenceStartRef.current = Date.now();
+      
+      // Start engines
+      mediaRecorder.start(1000);
+      setState("recording");
+      
+      // Start visualizer loop
+      processAudioVisualizer();
 
       // Start timer
-      timerRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
+      timerIntervalRef.current = setInterval(() => {
+        setSecondsElapsed((prev) => {
+          const next = prev + 1;
+          const m = String(Math.floor(next / 60)).padStart(2, '0');
+          const s = String(next % 60).padStart(2, '0');
+          setTimerDisplay(`${m}:${s}`);
+          return next;
+        });
       }, 1000);
 
-      // Start waveform animation
-      animFrameRef.current = requestAnimationFrame(updateWaveform);
     } catch (err) {
       console.error("Failed to start recording:", err);
-      alert(
-        "Microphone access is required. Please allow microphone permissions."
-      );
+      alert("Microphone access is required to use the recording studio.");
     }
   };
 
-  // ---- Speech Recognition ----
-  const startSpeechRecognition = () => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      console.warn("Speech recognition not supported in this browser.");
-      return;
+  const stopRecordingEngine = () => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
     }
-
-    const recognition = new SpeechRecognition();
-    recognitionRef.current = recognition;
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-
-    let finalTranscript = "";
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let interimTranscript = "";
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result.isFinal) {
-          finalTranscript += result[0].transcript + " ";
-        } else {
-          interimTranscript += result[0].transcript;
-        }
-      }
-
-      setTranscript(finalTranscript + interimTranscript);
-    };
-
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      if (event.error !== "aborted") {
-        console.error("Speech recognition error:", event.error);
-      }
-    };
-
-    recognition.onend = () => {
-      // Restart if still recording
-      if (mediaRecorderRef.current?.state === "recording") {
-        try {
-          recognition.start();
-        } catch {
-          // Ignore restart errors
-        }
-      }
-    };
-
-    recognition.start();
-  };
-
-  // ---- Pause / Resume ----
-  const togglePause = () => {
-    if (!mediaRecorderRef.current) return;
-
-    if (isPaused) {
-      mediaRecorderRef.current.resume();
-      timerRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
-      }, 1000);
-      animFrameRef.current = requestAnimationFrame(updateWaveform);
-      setIsPaused(false);
-    } else {
-      mediaRecorderRef.current.pause();
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      setIsPaused(true);
-      setWaveformData(new Array(WAVEFORM_BARS).fill(4));
-    }
-  };
-
-  // ---- Stop Recording ----
-  const stopRecording = async () => {
-    setIsProcessing(true);
-
-    // Stop speech recognition
     if (recognitionRef.current) {
+      recognitionRef.current.onend = null; // prevent auto-restart
       recognitionRef.current.stop();
-      recognitionRef.current = null;
+    }
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+    }
+    if (audioContextRef.current?.state !== "closed") {
+      audioContextRef.current?.close();
+    }
+  };
+
+  const handleFinish = async () => {
+    stopRecordingEngine();
+    setState("processing");
+
+    // Close out any ongoing silence
+    if (isSilentRef.current) {
+      const silenceDuration = (Date.now() - silenceStartRef.current) / 1000;
+      audioAnalysisRef.current.totalSilenceSeconds += Math.min(silenceDuration, 20);
     }
 
-    // Stop timer and animation
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    const { pauseCount, totalSilenceSeconds } = audioAnalysisRef.current;
+    
+    // In a real app we'd upload the audio blob here using chunksRef.current
+    // const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
 
-    // Stop media recorder
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      await new Promise<void>((resolve) => {
-        mediaRecorderRef.current!.onstop = () => resolve();
-        mediaRecorderRef.current!.stop();
-      });
-    }
+    const finalFullText = transcript + " " + interimTranscript;
+    const wpm = secondsElapsed > 0 ? (finalFullText.split(" ").length / (secondsElapsed / 60)) : 0;
 
-    // Stop stream
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-    }
-
-    // Close audio context
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-    }
-
-    // Calculate audio metadata
-    const totalDuration = recordingTime;
-    const totalSilence = pausesRef.current.reduce(
-      (sum, p) => sum + p.durationMs,
-      0
-    );
-    const speakingTime = totalDuration - totalSilence / 1000;
-    const wordCount = transcript.trim().split(/\s+/).filter(Boolean).length;
-    const wpm = speakingTime > 0 ? (wordCount / speakingTime) * 60 : 0;
-
-    const audioMetadata: AudioMetadata = {
-      totalDurationSeconds: totalDuration,
-      speakingTimeSeconds: Math.round(speakingTime),
-      silenceTimeSeconds: Math.round(totalSilence / 1000),
-      pauseCount: pausesRef.current.length,
-      pauses: pausesRef.current,
-      averagePauseDurationMs:
-        pausesRef.current.length > 0
-          ? Math.round(
-              pausesRef.current.reduce((s, p) => s + p.durationMs, 0) /
-                pausesRef.current.length
-            )
-          : 0,
-      wpm: Math.round(wpm),
-    };
-
-    // Create audio blob
-    const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
-
-    // Send to analysis API
+    // Call our AI Endpoint
     try {
-      const formData = new FormData();
-      formData.append("audio", audioBlob, "recording.webm");
-      formData.append("transcript", transcript);
-      formData.append("topic", currentTopic.text);
-      formData.append("category", currentTopic.category);
-      formData.append("framework", currentTopic.framework);
-      formData.append("audioMetadata", JSON.stringify(audioMetadata));
-
       const response = await fetch("/api/ai/analyze", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript: finalFullText,
+          duration: secondsElapsed,
+          wpm: Math.round(wpm),
+          pauseCount,
+          topic
+        })
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        // Navigate to evaluation page
-        router.push(`/evaluation/${result.sessionId}`);
-      } else {
-        // For now, store locally and show mock results
-        console.error("Analysis API error");
-        setIsProcessing(false);
-        setIsRecording(false);
-        alert("Analysis complete! (API not configured yet — connect your Gemini API key in .env.local)");
-      }
-    } catch (err) {
-      console.error("Failed to analyze:", err);
-      setIsProcessing(false);
-      setIsRecording(false);
-      alert("Recording saved! Connect your Gemini API key to enable AI analysis.");
+      if (!response.ok) throw new Error("Analysis failed");
+      
+      const analysisData = await response.json();
+
+      // Create session object
+      const sessionId = `ses_${Date.now()}`;
+      addSession({
+        id: sessionId,
+        type: "recording",
+        topic,
+        category,
+        transcript: finalFullText,
+        analysis: analysisData,
+        audioMetadata: {
+          totalDurationSeconds: secondsElapsed,
+          speakingTimeSeconds: secondsElapsed - totalSilenceSeconds,
+          silenceTimeSeconds: totalSilenceSeconds,
+          pauseCount,
+          wpm: Math.round(wpm)
+        },
+        xpEarned: 50,
+        createdAt: new Date().toISOString()
+      });
+
+      // Update XP and Streak
+      addXp(50);
+      updateStreak();
+
+      // Navigate to results
+      router.push(`/evaluation/${sessionId}`);
+      
+    } catch (error) {
+      console.error(error);
+      alert("Failed to analyze recording. Please try again.");
+      setState("idle");
     }
-
-    setWaveformData(new Array(WAVEFORM_BARS).fill(4));
   };
 
-  // ---- Randomize Topic ----
-  const randomizeTopic = () => {
-    const idx = Math.floor(Math.random() * defaultTopics.length);
-    setCurrentTopic(defaultTopics[idx]);
+  // Generate some bars for the visualizer
+  const renderBars = () => {
+    const bars = [];
+    const numBars = 40;
+    for (let i = 0; i < numBars; i++) {
+      // Create a wave effect centered around the middle
+      const distFromCenter = Math.abs(i - numBars / 2) / (numBars / 2);
+      const intensity = Math.max(0.1, 1 - distFromCenter);
+      const height = state === "recording" ? Math.max(5, dbLevel * intensity * (Math.random() * 0.5 + 0.5)) : 5;
+      
+      bars.push(
+        <div
+          key={i}
+          className="w-1.5 md:w-2 bg-gradient-primary rounded-full transition-all duration-75"
+          style={{ height: `${height}%`, opacity: state === "recording" ? 1 : 0.3 }}
+        />
+      );
+    }
+    return bars;
   };
-
-  // ---- Cleanup ----
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (recognitionRef.current) recognitionRef.current.stop();
-      if (streamRef.current)
-        streamRef.current.getTracks().forEach((t) => t.stop());
-      if (audioContextRef.current) audioContextRef.current.close();
-    };
-  }, []);
 
   return (
-    <div className={styles.studio}>
-      {/* Header */}
-      <div className={styles.studioHeader}>
-        <div className={styles.studioTitle}>🎙️ Recording Studio</div>
-        <div className={styles.studioControls}>
-          {!isRecording && (
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={randomizeTopic}
-              id="randomize-topic-btn"
-            >
-              🎲 Random Topic
-            </button>
-          )}
-          {!isRecording && (
-            <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => setShowTopicPicker(!showTopicPicker)}
-              id="pick-topic-btn"
-            >
-              📋 Pick Topic
-            </button>
-          )}
+    <div className="page-container h-[calc(100vh-2rem)] md:h-[calc(100vh-4rem)] flex flex-col">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 shrink-0">
+        <div>
+          <h1 className="heading-3 mb-1">Recording Studio</h1>
+          <p className="text-secondary text-base">Clear your mind and speak naturally.</p>
         </div>
-      </div>
-
-      {/* Topic Picker */}
-      {showTopicPicker && !isRecording && (
-        <div
-          style={{
-            padding: "var(--space-4) var(--space-6)",
-            borderBottom: "1px solid var(--border-subtle)",
-          }}
-        >
-          <div className={styles.topicGrid}>
-            {defaultTopics.map((topic, i) => (
-              <button
-                key={i}
-                className={styles.topicOption}
-                onClick={() => {
-                  setCurrentTopic(topic);
-                  setShowTopicPicker(false);
-                }}
-              >
-                <div className={styles.topicOptionTitle}>{topic.text}</div>
-                <div className={styles.topicOptionMeta}>
-                  {topic.category} · {topic.framework} · {topic.difficulty}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Topic Display */}
-      <div className={styles.topicSection}>
-        <div className={styles.topicCategory}>{currentTopic.category}</div>
-        <h2 className={styles.topicText}>{currentTopic.text}</h2>
-        <div className={styles.topicHints}>
-          <span className={styles.topicHint}>
-            ⏱️ {currentTopic.duration}
-          </span>
-          <span className={styles.topicHint}>
-            🏗️ {currentTopic.framework}
-          </span>
-          <span className={styles.topicHint}>
-            📊 {currentTopic.difficulty}
-          </span>
-        </div>
-      </div>
-
-      {/* Recording Area */}
-      <div className={styles.recordingArea}>
-        {/* Waveform */}
-        <div className={styles.waveformContainer}>
-          {waveformData.map((height, i) => (
-            <div
-              key={i}
-              className={`${styles.waveBar} ${!isRecording ? styles.waveBarIdle : ""}`}
-              style={{ height: `${height}px` }}
-            />
-          ))}
-        </div>
-
-        {/* Timer */}
-        <div
-          className={`${styles.timer} ${isRecording ? styles.timerRecording : ""}`}
-        >
-          {formatTime(recordingTime)}
-        </div>
-
-        {/* Record Button */}
-        <div className={styles.recordBtnWrapper}>
-          {!isRecording ? (
-            <button
-              className={`${styles.recordBtn} ${styles.recordBtnIdle}`}
-              onClick={startRecording}
-              id="record-btn"
-            >
-              <div
-                className={`${styles.recordBtnIcon} ${styles.recordBtnIconIdle}`}
-              />
-            </button>
-          ) : (
-            <button
-              className={`${styles.recordBtn} ${styles.recordBtnRecording}`}
-              onClick={stopRecording}
-              id="stop-btn"
-            >
-              <div className={styles.recordBtnIcon} />
-            </button>
-          )}
-          <div className={styles.recordBtnRing} />
-        </div>
-
-        {/* Action Buttons */}
-        <div className={styles.actionBtns}>
-          {!isRecording ? (
-            <span className="body-small text-secondary">
-              Tap to start recording
-            </span>
-          ) : (
-            <>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={togglePause}
-                id="pause-btn"
-              >
-                {isPaused ? "▶️ Resume" : "⏸️ Pause"}
-              </button>
-              <button
-                className="btn btn-danger btn-sm"
-                onClick={stopRecording}
-                id="stop-recording-btn"
-              >
-                ⏹️ Stop & Analyze
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* Processing Overlay */}
-        {isProcessing && (
-          <div className={styles.processingOverlay}>
-            <div className={styles.processingSpinner} />
-            <div className={styles.processingText}>
-              Analyzing your speech...
-            </div>
-            <div className={styles.processingSubtext}>
-              Checking clarity, vocabulary, grammar, structure, and more
-            </div>
+        
+        {state === "idle" && (
+          <div className="flex items-center gap-2 border border-[rgba(255,255,255,0.06)] rounded-lg p-1 bg-background-tertiary">
+             <button className="btn btn-sm hover:bg-[rgba(255,255,255,0.06)]">Change Topic</button>
+             <button className="btn btn-sm hover:bg-[rgba(255,255,255,0.06)]">IELTS Mode</button>
           </div>
         )}
       </div>
 
-      {/* Live Transcript */}
-      {(isRecording || transcript) && (
-        <div className={styles.transcriptSection}>
-          <div className={styles.transcriptLabel}>Live Transcript</div>
-          <div className={styles.transcriptText}>
-            {transcript || "Start speaking..."}
-            {isRecording && <span className={styles.transcriptCursor} />}
+      <div className="flex-1 flex flex-col items-center justify-center max-w-3xl mx-auto w-full">
+        {/* Topic Card */}
+        <div className={`w-full text-center transition-all duration-500 mb-8 ${state === "recording" ? "scale-105" : ""}`}>
+          <div className="inline-block px-3 py-1 bg-background-elevated border border-[rgba(255,255,255,0.06)] rounded-full text-xs font-semibold uppercase tracking-widest text-primary-400 mb-4">
+            {category}
           </div>
+          <h2 className="text-3xl md:text-5xl font-bold leading-tight mb-2">
+            {topic}
+          </h2>
         </div>
-      )}
+
+        {/* Live Transcript / Empty state */}
+        <div className="w-full h-48 md:h-64 bg-background-tertiary border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 mb-8 overflow-y-auto flex flex-col relative text-center">
+          {state === "idle" && (
+             <div className="m-auto text-[#6b6b80] max-w-sm">
+               Hit record when you&apos;re ready. Try to speak continuously without worrying too much about mistakes.
+             </div>
+          )}
+          {state === "recording" && (
+            <div className="text-xl leading-relaxed">
+              <span className="text-[#f0f0f5]">{transcript}</span>
+              <span className="text-[#a0a0b5]">{interimTranscript}</span>
+            </div>
+          )}
+          {state === "processing" && (
+             <div className="m-auto">
+               <div className="w-8 h-8 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin mx-auto mb-4" />
+               <div className="text-lg font-semibold gradient-text animate-pulse">AI is analyzing your speech...</div>
+               <div className="text-sm text-secondary mt-2">Checking grammar, calculating fluency, and identifying filler words.</div>
+             </div>
+          )}
+        </div>
+
+        {/* Controls & Visualizer */}
+        {state !== "processing" && (
+          <div className="w-full flex flex-col items-center gap-8">
+            <div className="text-4xl md:text-5xl font-mono font-medium tracking-tight">
+              {timerDisplay}
+            </div>
+
+            {/* Audio Wave Visualizer Placeholder */}
+            <div className="flex items-center justify-center gap-1 h-16 md:h-24 w-full max-w-lg mb-4">
+              {renderBars()}
+            </div>
+
+            <div className="flex justify-center flex-wrap gap-4 w-full">
+              {state === "idle" && (
+                <button
+                  onClick={startRecording}
+                  className="w-20 h-20 bg-danger-500 rounded-full shadow-[0_0_0_8px_rgba(244,63,94,0.15)] flex items-center justify-center transition-all hover:scale-105"
+                  aria-label="Start recording"
+                >
+                  <div className="w-8 h-8 bg-white rounded-full" />
+                </button>
+              )}
+
+              {state === "recording" && (
+                <>
+                  <button
+                    className="w-20 h-20 bg-transparent border-2 border-danger-500 text-danger-500 rounded-full flex justify-center items-center font-bold"
+                    aria-label="pause"
+                  >
+                     Pause
+                  </button>
+                  <button
+                    onClick={handleFinish}
+                    className="w-20 h-20 bg-danger-500 rounded-full shadow-[0_0_0_8px_rgba(244,63,94,0.15)] animate-recordPulse flex items-center justify-center hover:scale-105"
+                    aria-label="Finish recording"
+                  >
+                    <div className="w-8 h-8 bg-white rounded-md" />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

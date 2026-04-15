@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import styles from "../auth.module.css";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -48,22 +47,24 @@ export default function SignupPage() {
   };
 
   return (
-    <div className={styles.authPage}>
-      <div className={styles.authCard}>
-        <div className={styles.authLogo}>
-          <div className={styles.authLogoIcon}>F</div>
+    <div className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden">
+      <div className="absolute -top-[20%] left-1/2 -translate-x-1/2 w-[700px] h-[700px] bg-[radial-gradient(circle,rgba(6,182,212,0.08)_0%,transparent_70%)] rounded-full pointer-events-none" />
+      
+      <div className="w-full max-w-[420px] bg-background-secondary border border-[rgba(255,255,255,0.06)] rounded-2xl p-10 relative z-10">
+        <div className="flex items-center justify-center gap-2 mb-8 text-xl font-bold">
+          <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center font-extrabold text-[#f0f0f5]">F</div>
           <span>
             Fluent<span className="gradient-text">Mind</span>
           </span>
         </div>
 
-        <h1 className={styles.authTitle}>Create your account</h1>
-        <p className={styles.authSubtitle}>
+        <h1 className="text-2xl font-bold text-center mb-2">Create your account</h1>
+        <p className="text-center text-[#a0a0b5] text-base mb-8">
           Start your journey to fluent English speaking
         </p>
 
         <button
-          className={styles.oauthBtn}
+          className="flex items-center justify-center gap-3 w-full px-5 py-3 bg-background-tertiary border border-[rgba(255,255,255,0.1)] rounded-xl font-semibold text-base text-[#f0f0f5] cursor-pointer transition-all duration-150 hover:bg-background-elevated hover:border-[rgba(255,255,255,0.16)]"
           onClick={handleGoogleSignup}
           type="button"
           id="google-signup-btn"
@@ -77,11 +78,11 @@ export default function SignupPage() {
           Continue with Google
         </button>
 
-        <div className={styles.authDivider}>or</div>
+        <div className="flex items-center gap-4 my-4 text-[#6b6b80] text-sm before:content-[''] before:flex-1 before:h-[1px] before:bg-[rgba(255,255,255,0.06)] after:content-[''] after:flex-1 after:h-[1px] after:bg-[rgba(255,255,255,0.06)]">or</div>
 
-        {error && <div className={styles.authError}>{error}</div>}
+        {error && <div className="px-4 py-3 bg-[rgba(244,63,94,0.08)] border border-[rgba(244,63,94,0.15)] rounded-md text-danger-400 text-sm mb-4">{error}</div>}
 
-        <form onSubmit={handleSignup} className={styles.authForm}>
+        <form onSubmit={handleSignup} className="flex flex-col gap-4">
           <div className="input-wrapper">
             <label className="input-label" htmlFor="signup-name">Full Name</label>
             <input
@@ -129,9 +130,9 @@ export default function SignupPage() {
           </button>
         </form>
 
-        <div className={styles.authFooter}>
+        <div className="text-center mt-6 text-sm text-[#a0a0b5]">
           Already have an account?{" "}
-          <Link href="/login">Log in</Link>
+          <Link href="/login" className="text-primary-400 font-semibold">Log in</Link>
         </div>
       </div>
     </div>

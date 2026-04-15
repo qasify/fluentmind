@@ -1,13 +1,12 @@
 "use client";
 
 import { useAppStore } from "@/lib/store";
-import styles from "./page.module.css";
 
 export default function VocabularyPage() {
   const { vocabularyBank, removeVocabWord } = useAppStore();
 
   return (
-    <div className={styles.vocabPage}>
+    <div className="page-container">
       <div className="page-header">
         <h1 className="page-title">📚 Vocabulary Bank</h1>
         <p className="page-subtitle">
@@ -17,7 +16,7 @@ export default function VocabularyPage() {
       </div>
 
       {/* Stats */}
-      <div className="stats-grid" style={{ marginBottom: "var(--space-6)" }}>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="stat-card">
           <div className="stat-label">Total Words</div>
           <div className="stat-value">{vocabularyBank.length}</div>
@@ -40,22 +39,22 @@ export default function VocabularyPage() {
 
       {/* Word List */}
       {vocabularyBank.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "var(--space-12)", color: "var(--text-secondary)" }}>
-          <div style={{ fontSize: "3rem", marginBottom: "var(--space-4)", opacity: 0.5 }}>📚</div>
-          <h3 className="heading-4" style={{ marginBottom: "var(--space-2)", color: "var(--text-primary)" }}>
+        <div className="text-center py-20 text-[#a0a0b5] bg-background-elevated rounded-2xl border border-[rgba(255,255,255,0.06)]">
+          <div className="text-5xl mb-4 opacity-50">📚</div>
+          <h3 className="heading-4 mb-2 text-[#f0f0f5]">
             Your vocabulary bank is empty
           </h3>
-          <p style={{ maxWidth: 400, margin: "0 auto" }}>
+          <p className="max-w-md mx-auto">
             Complete a recording session and click &quot;Add to Bank&quot; on any vocabulary
             suggestion to start building your personal word collection.
           </p>
         </div>
       ) : (
-        <div className={styles.wordGrid}>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {vocabularyBank.map((word) => (
-            <div key={word.id} className={styles.wordCard}>
-              <div className={styles.wordHeader}>
-                <span className={styles.wordWord}>{word.word}</span>
+            <div key={word.id} className="card flex flex-col hover:-translate-y-[2px]">
+              <div className="flex items-center justify-between mb-3 border-b border-[rgba(255,255,255,0.06)] pb-3">
+                <span className="text-xl font-bold text-primary-400">{word.word}</span>
                 <span
                   className={`badge ${
                     word.masteryLevel === "mastered"
@@ -70,17 +69,18 @@ export default function VocabularyPage() {
                   {word.masteryLevel}
                 </span>
               </div>
-              <div className={styles.wordDef}>{word.definition}</div>
-              <div className={styles.wordContext}>
+              <div className="text-base text-secondary mb-3 leading-relaxed flex-1">
+                {word.definition}
+              </div>
+              <div className="text-sm text-[#6b6b80] italic mb-4 bg-background-tertiary p-3 rounded-lg border border-[rgba(255,255,255,0.03)] selection:bg-primary-500/30">
                 &quot;{word.context}&quot;
               </div>
-              <div className={styles.wordMeta}>
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="badge badge-primary">{word.register}</span>
                 <span className="badge badge-accent">{word.cefrLevel}</span>
                 <button
-                  className="btn btn-ghost btn-sm"
+                  className="ml-auto text-xs font-semibold text-danger-400 hover:text-danger-300 transition-colors"
                   onClick={() => removeVocabWord(word.id)}
-                  style={{ marginLeft: "auto", fontSize: "var(--text-xs)" }}
                 >
                   Remove
                 </button>
