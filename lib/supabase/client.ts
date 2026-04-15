@@ -1,8 +1,24 @@
 import { createBrowserClient } from "@supabase/ssr";
 
 export function createClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  // Return a safe no-op client if credentials are not configured
+  if (!url || !key || url.startsWith("your_") || key.startsWith("your_")) {
+    // Return a mock client that won't crash but won't do anything
+    return {
+      auth: {
+        signInWithPassword: async () => ({ data: null, error: { message: "Supabase not configured" } }),
+        signUp: async () => ({ data: null, error: { message: "Supabase not configured" } }),
+        signInWithOAuth: async () => ({ data: null, error: { message: "Supabase not configured" } }),
+        signOut: async () => ({ error: null }),
+        getUser: async () => ({ data: { user: null }, error: null }),
+        getSession: async () => ({ data: { session: null }, error: null }),
+        onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+      },
+    } as unknown as ReturnType<typeof createBrowserClient>;
+  }
+
+  return createBrowserClient(url, key);
 }

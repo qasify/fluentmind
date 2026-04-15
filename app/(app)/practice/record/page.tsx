@@ -1,56 +1,91 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useRef, useEffect, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAppStore } from "@/lib/store";
 
-// Extended Window interface for Web Speech API
-interface SpeechRecognitionEvent extends Event {
-  resultIndex: number;
-  results: SpeechRecognitionResultList;
+// Use window-level access for cross-browser Speech Recognition
+function getSpeechRecognitionAPI(): (new () => SpeechRecognition) | null {
+  const w = window as unknown as Record<string, unknown>;
+  return (w.SpeechRecognition || w.webkitSpeechRecognition) as (new () => SpeechRecognition) | null;
 }
 
-interface SpeechRecognitionErrorEvent extends Event {
-  error: "no-speech" | "audio-capture" | "not-allowed" | "network" | "aborted" | "language-not-supported" | "service-not-allowed" | "bad-grammar";
-  message: string;
-}
-
-interface SpeechRecognition extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start: () => void;
-  stop: () => void;
-  abort: () => void;
-  onresult: (event: SpeechRecognitionEvent) => void;
-  onerror: (event: SpeechRecognitionErrorEvent) => void;
-  onend: () => void;
-  onstart: () => void;
-}
-
-interface SpeechRecognitionConstructor {
-  new (): SpeechRecognition;
-}
-
-declare global {
-  interface Window {
-    SpeechRecognition?: SpeechRecognitionConstructor;
-    webkitSpeechRecognition?: SpeechRecognitionConstructor;
-  }
-}
 
 type RecordingState = "idle" | "recording" | "processing" | "completed";
 
-// Types for our local audio engine
 interface AudioAnalysis {
   pauseCount: number;
   totalSilenceSeconds: number;
   speakingSeconds: number;
 }
 
-export default function RecordPage() {
+// Topic database
+const TOPIC_CATEGORIES = [
+  {
+    name: "Daily Life",
+    icon: "☀️",
+    topics: [
+      "Describe your ideal weekend",
+      "Talk about your morning routine",
+      "Describe your favorite meal and why you enjoy it",
+      "Talk about a hobby you recently started",
+      "Describe your neighborhood",
+    ],
+  },
+  {
+    name: "Professional",
+    icon: "💼",
+    topics: [
+      "Describe the perfect work environment",
+      "What qualities make a great leader?",
+      "Talk about a challenge you overcame at work or school",
+      "How do you handle disagreements with colleagues?",
+      "Describe your dream job and why",
+    ],
+  },
+  {
+    name: "Abstract Ideas",
+    icon: "💡",
+    topics: [
+      "Should social media have age restrictions?",
+      "Is technology making us more or less connected?",
+      "What role should AI play in education?",
+      "Is it better to specialize or be a generalist?",
+      "Do you think success is more about talent or hard work?",
+    ],
+  },
+  {
+    name: "IELTS Cue Cards",
+    icon: "🎓",
+    topics: [
+      "Describe a book that you have recently read. You should say what it was about, why you decided to read it, and whether you would recommend it.",
+      "Describe a place you have visited that left a strong impression. Include when you went, who you were with, and what made it memorable.",
+      "Describe a person who has influenced you. Say who this person is, how you know them, and why they had such an impact.",
+      "Describe a time when you helped someone. Include who the person was, what you did, and how you felt afterwards.",
+      "Describe a skill you would like to learn. Explain what it is, why you are interested, and how you plan to learn it.",
+    ],
+  },
+  {
+    name: "Personal Growth",
+    icon: "🌱",
+    topics: [
+      "What is the most important lesson you've learned in life?",
+      "Describe a failure that taught you something valuable",
+      "What does success mean to you?",
+      "Talk about a goal you're currently working towards",
+      "What advice would you give to your younger self?",
+    ],
+  },
+];
+
+function RecordContent() {
   const router = useRouter();
-  const { addSession, addXp, updateStreak } = useAppStore();
+  const searchParams = useSearchParams();
+  const { addSession, addXp, updateStreak, checkAndUnlockBadges } = useAppStore();
+
+  // Topic picker state
+  const [showTopicPicker, setShowTopicPicker] = useState(false);
+  const [selectedCategoryIndex, setSelectedCategoryIndex] = useState(0);
 
   const [state, setState] = useState<RecordingState>("idle");
   const [topic, setTopic] = useState("Describe your ideal weekend");
@@ -85,6 +120,14 @@ export default function RecordPage() {
   const silenceStartRef = useRef<number>(0);
   const chunksRef = useRef<Blob[]>([]);
 
+  // Load topic from URL params
+  useEffect(() => {
+    const urlTopic = searchParams.get("topic");
+    const urlCategory = searchParams.get("category");
+    if (urlTopic) setTopic(decodeURIComponent(urlTopic));
+    if (urlCategory) setCategory(decodeURIComponent(urlCategory));
+  }, [searchParams]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -92,9 +135,21 @@ export default function RecordPage() {
     };
   }, []);
 
+  const selectRandomTopic = () => {
+    const cat = TOPIC_CATEGORIES[Math.floor(Math.random() * TOPIC_CATEGORIES.length)];
+    const t = cat.topics[Math.floor(Math.random() * cat.topics.length)];
+    setTopic(t);
+    setCategory(cat.name);
+  };
+
+  const selectTopic = (t: string, cat: string) => {
+    setTopic(t);
+    setCategory(cat);
+    setShowTopicPicker(false);
+  };
+
   const initSpeechRecognition = () => {
-    const SpeechRecognitionAPI =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognitionAPI = getSpeechRecognitionAPI();
 
     if (!SpeechRecognitionAPI) {
       alert("Speech Recognition is not supported in this browser. Please use Chrome.");
@@ -130,7 +185,7 @@ export default function RecordPage() {
 
     recognition.onend = () => {
       if (state === "recording") {
-        recognition.start(); // auto-restart if still recording but timeout hit
+        recognition.start();
       }
     };
 
@@ -148,11 +203,10 @@ export default function RecordPage() {
       sum += dataArray[i];
     }
     const average = sum / dataArray.length;
-    // Map to a roughly 0-100 scale for CSS
     const scaled = Math.min(100, (average / 256) * 200);
     setDbLevel(scaled);
 
-    const RMS_SILENCE_THRESHOLD = 15; // Tunable
+    const RMS_SILENCE_THRESHOLD = 15;
     const now = Date.now();
 
     if (scaled < RMS_SILENCE_THRESHOLD) {
@@ -167,7 +221,7 @@ export default function RecordPage() {
         if (silenceDuration > 1.5) {
           audioAnalysisRef.current.pauseCount += 1;
         }
-        audioAnalysisRef.current.totalSilenceSeconds += Math.min(silenceDuration, 20); // cap max silence
+        audioAnalysisRef.current.totalSilenceSeconds += Math.min(silenceDuration, 20);
       }
     }
 
@@ -178,8 +232,7 @@ export default function RecordPage() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      // 1. Setup Audio Context & Visualizer
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 256;
@@ -188,7 +241,6 @@ export default function RecordPage() {
       audioContextRef.current = audioCtx;
       analyserRef.current = analyser;
       
-      // 2. Setup MediaRecorder for blob saving
       const mediaRecorder = new MediaRecorder(stream);
       chunksRef.current = [];
       mediaRecorder.ondataavailable = (e) => {
@@ -196,14 +248,12 @@ export default function RecordPage() {
       };
       mediaRecorderRef.current = mediaRecorder;
       
-      // 3. Setup Transcription
       const recognition = initSpeechRecognition();
       if (recognition) {
         recognitionRef.current = recognition;
         recognition.start();
       }
 
-      // Reset state variables
       setTranscript("");
       setInterimTranscript("");
       setSecondsElapsed(0);
@@ -212,14 +262,11 @@ export default function RecordPage() {
       isSilentRef.current = true;
       silenceStartRef.current = Date.now();
       
-      // Start engines
       mediaRecorder.start(1000);
       setState("recording");
       
-      // Start visualizer loop
       processAudioVisualizer();
 
-      // Start timer
       timerIntervalRef.current = setInterval(() => {
         setSecondsElapsed((prev) => {
           const next = prev + 1;
@@ -242,7 +289,7 @@ export default function RecordPage() {
       mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
     }
     if (recognitionRef.current) {
-      recognitionRef.current.onend = null; // prevent auto-restart
+      recognitionRef.current.onend = null;
       recognitionRef.current.stop();
     }
     if (animationFrameRef.current) {
@@ -260,21 +307,16 @@ export default function RecordPage() {
     stopRecordingEngine();
     setState("processing");
 
-    // Close out any ongoing silence
     if (isSilentRef.current) {
       const silenceDuration = (Date.now() - silenceStartRef.current) / 1000;
       audioAnalysisRef.current.totalSilenceSeconds += Math.min(silenceDuration, 20);
     }
 
     const { pauseCount, totalSilenceSeconds } = audioAnalysisRef.current;
-    
-    // In a real app we'd upload the audio blob here using chunksRef.current
-    // const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
 
     const finalFullText = transcript + " " + interimTranscript;
     const wpm = secondsElapsed > 0 ? (finalFullText.split(" ").length / (secondsElapsed / 60)) : 0;
 
-    // Call our AI Endpoint
     try {
       const response = await fetch("/api/ai/analyze", {
         method: "POST",
@@ -292,7 +334,6 @@ export default function RecordPage() {
       
       const analysisData = await response.json();
 
-      // Create session object
       const sessionId = `ses_${Date.now()}`;
       addSession({
         id: sessionId,
@@ -312,11 +353,10 @@ export default function RecordPage() {
         createdAt: new Date().toISOString()
       });
 
-      // Update XP and Streak
       addXp(50);
       updateStreak();
+      checkAndUnlockBadges();
 
-      // Navigate to results
       router.push(`/evaluation/${sessionId}`);
       
     } catch (error) {
@@ -326,12 +366,10 @@ export default function RecordPage() {
     }
   };
 
-  // Generate some bars for the visualizer
   const renderBars = () => {
     const bars = [];
     const numBars = 40;
     for (let i = 0; i < numBars; i++) {
-      // Create a wave effect centered around the middle
       const distFromCenter = Math.abs(i - numBars / 2) / (numBars / 2);
       const intensity = Math.max(0.1, 1 - distFromCenter);
       const height = state === "recording" ? Math.max(5, dbLevel * intensity * (Math.random() * 0.5 + 0.5)) : 5;
@@ -348,17 +386,87 @@ export default function RecordPage() {
   };
 
   return (
-    <div className="page-container h-[calc(100vh-2rem)] md:h-[calc(100vh-4rem)] flex flex-col">
+    <div className="page-container h-[calc(100vh-2rem)] md:h-[calc(100vh-4rem)] flex flex-col relative">
+
+      {/* Topic Picker Modal */}
+      {showTopicPicker && (
+        <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowTopicPicker(false)}>
+          <div
+            className="w-full max-w-2xl max-h-[80vh] bg-background-secondary border border-[rgba(255,255,255,0.08)] rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-[rgba(255,255,255,0.06)] flex items-center justify-between">
+              <h3 className="heading-4">Choose a Topic</h3>
+              <button onClick={() => setShowTopicPicker(false)} className="btn btn-ghost btn-icon text-xl">✕</button>
+            </div>
+
+            {/* Category Tabs */}
+            <div className="flex gap-1 px-4 pt-4 overflow-x-auto shrink-0">
+              {TOPIC_CATEGORIES.map((cat, i) => (
+                <button
+                  key={cat.name}
+                  onClick={() => setSelectedCategoryIndex(i)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                    selectedCategoryIndex === i
+                      ? "bg-primary-500/10 text-primary-400 border border-primary-500/20"
+                      : "text-[#a0a0b5] hover:text-[#f0f0f5] hover:bg-[rgba(255,255,255,0.03)]"
+                  }`}
+                >
+                  {cat.icon} {cat.name}
+                </button>
+              ))}
+            </div>
+
+            {/* Topic List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {TOPIC_CATEGORIES[selectedCategoryIndex].topics.map((t, i) => (
+                <button
+                  key={i}
+                  onClick={() => selectTopic(t, TOPIC_CATEGORIES[selectedCategoryIndex].name)}
+                  className={`w-full text-left p-4 rounded-xl border transition-all ${
+                    topic === t
+                      ? "bg-primary-500/10 border-primary-500/30"
+                      : "bg-background-tertiary border-[rgba(255,255,255,0.06)] hover:border-[rgba(255,255,255,0.12)] hover:bg-background-elevated"
+                  }`}
+                >
+                  <div className="font-medium leading-relaxed">{t}</div>
+                </button>
+              ))}
+            </div>
+
+            {/* Random Topic Button */}
+            <div className="p-4 border-t border-[rgba(255,255,255,0.06)]">
+              <button
+                onClick={() => { selectRandomTopic(); setShowTopicPicker(false); }}
+                className="btn btn-secondary w-full"
+              >
+                🎲 Random Topic
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 shrink-0">
         <div>
           <h1 className="heading-3 mb-1">Recording Studio</h1>
-          <p className="text-secondary text-base">Clear your mind and speak naturally.</p>
+          <p className="text-[#a0a0b5] text-base">Clear your mind and speak naturally.</p>
         </div>
         
         {state === "idle" && (
-          <div className="flex items-center gap-2 border border-[rgba(255,255,255,0.06)] rounded-lg p-1 bg-background-tertiary">
-             <button className="btn btn-sm hover:bg-[rgba(255,255,255,0.06)]">Change Topic</button>
-             <button className="btn btn-sm hover:bg-[rgba(255,255,255,0.06)]">IELTS Mode</button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowTopicPicker(true)}
+              className="btn btn-secondary btn-sm"
+            >
+              📝 Change Topic
+            </button>
+            <button
+              onClick={selectRandomTopic}
+              className="btn btn-ghost btn-sm"
+            >
+              🎲 Random
+            </button>
           </div>
         )}
       </div>
@@ -375,23 +483,26 @@ export default function RecordPage() {
         </div>
 
         {/* Live Transcript / Empty state */}
-        <div className="w-full h-48 md:h-64 bg-background-tertiary border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 mb-8 overflow-y-auto flex flex-col relative text-center">
+        <div className="w-full h-48 md:h-64 bg-background-tertiary border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 mb-8 overflow-y-auto flex flex-col relative">
           {state === "idle" && (
-             <div className="m-auto text-[#6b6b80] max-w-sm">
-               Hit record when you&apos;re ready. Try to speak continuously without worrying too much about mistakes.
+             <div className="m-auto text-[#6b6b80] max-w-sm text-center">
+               Hit record when you&apos;re ready. Try to speak continuously for at least 2 minutes without worrying about mistakes.
              </div>
           )}
           {state === "recording" && (
             <div className="text-xl leading-relaxed">
               <span className="text-[#f0f0f5]">{transcript}</span>
               <span className="text-[#a0a0b5]">{interimTranscript}</span>
+              {!transcript && !interimTranscript && (
+                <span className="text-[#6b6b80] animate-pulse">Listening...</span>
+              )}
             </div>
           )}
           {state === "processing" && (
-             <div className="m-auto">
+             <div className="m-auto text-center">
                <div className="w-8 h-8 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin mx-auto mb-4" />
                <div className="text-lg font-semibold gradient-text animate-pulse">AI is analyzing your speech...</div>
-               <div className="text-sm text-secondary mt-2">Checking grammar, calculating fluency, and identifying filler words.</div>
+               <div className="text-sm text-[#a0a0b5] mt-2">Checking grammar, calculating fluency, and identifying filler words.</div>
              </div>
           )}
         </div>
@@ -403,7 +514,7 @@ export default function RecordPage() {
               {timerDisplay}
             </div>
 
-            {/* Audio Wave Visualizer Placeholder */}
+            {/* Audio Wave Visualizer */}
             <div className="flex items-center justify-center gap-1 h-16 md:h-24 w-full max-w-lg mb-4">
               {renderBars()}
             </div>
@@ -420,26 +531,30 @@ export default function RecordPage() {
               )}
 
               {state === "recording" && (
-                <>
-                  <button
-                    className="w-20 h-20 bg-transparent border-2 border-danger-500 text-danger-500 rounded-full flex justify-center items-center font-bold"
-                    aria-label="pause"
-                  >
-                     Pause
-                  </button>
-                  <button
-                    onClick={handleFinish}
-                    className="w-20 h-20 bg-danger-500 rounded-full shadow-[0_0_0_8px_rgba(244,63,94,0.15)] animate-recordPulse flex items-center justify-center hover:scale-105"
-                    aria-label="Finish recording"
-                  >
-                    <div className="w-8 h-8 bg-white rounded-md" />
-                  </button>
-                </>
+                <button
+                  onClick={handleFinish}
+                  className="w-20 h-20 bg-danger-500 rounded-full shadow-[0_0_0_8px_rgba(244,63,94,0.15)] animate-recordPulse flex items-center justify-center hover:scale-105"
+                  aria-label="Finish recording"
+                >
+                  <div className="w-8 h-8 bg-white rounded-md" />
+                </button>
               )}
             </div>
+
+            {state === "recording" && (
+              <p className="text-sm text-[#6b6b80]">Click the stop button when you&apos;re done</p>
+            )}
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+export default function RecordPage() {
+  return (
+    <Suspense fallback={<div className="page-container p-8 text-center text-[#a0a0b5]">Loading studio...</div>}>
+      <RecordContent />
+    </Suspense>
   );
 }

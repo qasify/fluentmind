@@ -1,12 +1,27 @@
 "use client";
 
+import Link from "next/link";
 import { useAppStore } from "@/lib/store";
 
 export default function VocabularyPage() {
-  const { vocabularyBank, removeVocabWord } = useAppStore();
+  const { vocabularyBank, removeVocabWord, getWordsDueForReview } = useAppStore();
+  const dueCount = getWordsDueForReview().length;
 
   return (
     <div className="page-container">
+      {/* Review Quiz Banner */}
+      {dueCount > 0 && (
+        <div className="bg-gradient-primary-soft border border-primary-500/20 rounded-2xl p-5 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div>
+            <div className="font-semibold text-lg">🧠 {dueCount} word{dueCount !== 1 ? "s" : ""} due for review</div>
+            <div className="text-sm text-[#a0a0b5]">Strengthen your memory with a quick quiz</div>
+          </div>
+          <Link href="/vocabulary/review" className="btn btn-primary shrink-0">
+            Start Review →
+          </Link>
+        </div>
+      )}
+
       <div className="page-header">
         <h1 className="page-title">📚 Vocabulary Bank</h1>
         <p className="page-subtitle">

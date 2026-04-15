@@ -2,19 +2,21 @@
 
 import { useState } from "react";
 import Sidebar from "@/components/layout/Sidebar";
+import { useAppStore } from "@/lib/store";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { currentStreak, totalXp, currentLevel, currentLevelTitle } = useAppStore();
 
   return (
     <div className="flex min-h-screen">
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        streakCount={0}
-        xp={0}
-        level={1}
-        levelTitle="Novice Communicator"
+        streakCount={currentStreak}
+        xp={totalXp}
+        level={currentLevel}
+        levelTitle={currentLevelTitle}
       />
 
       {/* Mobile header */}
