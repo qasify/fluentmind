@@ -1,17 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const transcript = formData.get("transcript") as string;
-    const topic = formData.get("topic") as string;
-    const category = formData.get("category") as string;
-    const framework = formData.get("framework") as string;
-    const audioMetadataStr = formData.get("audioMetadata") as string;
-    const audioMetadata = JSON.parse(audioMetadataStr || "{}");
+    const body = await request.json();
+    const transcript = body.transcript || "";
+    const topic = body.topic || "";
+    const category = body.category || "";
+    const framework = body.framework || "";
+    
+    // In original code this was passed as stringified JSON or plain object?
+    // The frontend sends duration, wpm, pauseCount at the root and topic/transcript
+    // Let's reconstruct audioMetadata as the frontend doesn't send "audioMetadata", it sends root fields.
+    const audioMetadata = {
+      totalDurationSeconds: body.duration || 0,
+      wpm: body.wpm || 0,
+      pauseCount: body.pauseCount || 0
+    };
 
     if (!transcript || transcript.trim().length < 10) {
       return NextResponse.json(

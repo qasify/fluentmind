@@ -364,7 +364,7 @@ function RecordContent() {
         category,
         transcript: finalFullText,
         audioUrl: storageUrl,
-        analysis: analysisData,
+        analysis: analysisData.analysis,
         audioMetadata: {
           totalDurationSeconds: secondsElapsed,
           speakingTimeSeconds: secondsElapsed - totalSilenceSeconds,

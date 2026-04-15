@@ -304,13 +304,19 @@ export const useAppStore = create<AppState>()((set, get) => ({
     }
 
     try {
-      const [{ data: pData }, { data: progData }, { data: sData }, { data: vData }, { data: fData }] = await Promise.all([
+      const [{ data: pData, error: pErr }, { data: upData, error: upErr }, { data: sData, error: sErr }, { data: vData, error: vErr }, { data: fData, error: fErr }] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
         supabase.from('user_progress').select('*').eq('id', user.id).single(),
         supabase.from('sessions').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
         supabase.from('vocabulary_words').select('*').eq('user_id', user.id),
         supabase.from('fsrs_cards').select('*').eq('user_id', user.id)
       ]);
+
+      if (pErr) console.error("Error fetching profiles:", pErr);
+      if (upErr) console.error("Error fetching user_progress:", upErr);
+      if (sErr) console.error("Error fetching sessions:", sErr);
+      if (vErr) console.error("Error fetching vocabulary:", vErr);
+      if (fErr) console.error("Error fetching FSRS cards:", fErr);
 
       if (pData) {
         set({
@@ -325,20 +331,20 @@ export const useAppStore = create<AppState>()((set, get) => ({
         });
       }
 
-      if (progData) {
+      if (upData) {
         // Merge fetched badges with ALL_BADGES so UI always shows complete list
-        const fetchedBadges = Array.isArray(progData.badges) ? progData.badges : [];
+        const fetchedBadges = Array.isArray(upData.badges) ? upData.badges : [];
         const badgesMap = new Map(fetchedBadges.map((b: any) => [b.id, b]));
         const mergedBadges = ALL_BADGES.map(b => (badgesMap.has(b.id) ? badgesMap.get(b.id) : { ...b })) as Badge[];
         
         set({
-          totalXp: progData.total_xp,
-          currentLevel: progData.current_level,
-          currentLevelTitle: progData.current_level_title,
-          currentStreak: progData.current_streak,
-          longestStreak: progData.longest_streak,
-          lastPracticeDate: progData.last_practice_date,
-          streakFreezesAvailable: progData.streak_freezes_available,
+          totalXp: upData.total_xp,
+          currentLevel: upData.current_level,
+          currentLevelTitle: upData.current_level_title,
+          currentStreak: upData.current_streak,
+          longestStreak: upData.longest_streak,
+          lastPracticeDate: upData.last_practice_date,
+          streakFreezesAvailable: upData.streak_freezes_available,
           badges: mergedBadges,
         });
       }
@@ -647,7 +653,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
     const masteredCount = state.vocabularyBank.filter((w) => w.masteryLevel === "mastered").length;
     const highestScore = state.sessions.length > 0
-      ? Math.max(...state.sessions.map((s) => s.analysis.overall.score))
+      ? Math.max(...state.sessions.map((s) => s.analysis?.overall?.score || 0))
       : 0;
 
     const updatedBadges = state.badges.map((badge) => {

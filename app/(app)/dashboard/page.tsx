@@ -21,7 +21,7 @@ export default function Dashboard() {
   const recentSessions = sessions.slice(0, 3);
 
   const avgScore = sessions.length > 0
-    ? Math.round(sessions.reduce((sum, s) => sum + s.analysis.overall.score, 0) / sessions.length)
+    ? Math.round(sessions.reduce((sum, s) => sum + (s.analysis?.overall?.score || 0), 0) / sessions.length)
     : 0;
 
   const topics = [
@@ -181,7 +181,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-extrabold text-base text-primary-400">{session.analysis.overall.score}</div>
+                      <div className="font-extrabold text-base text-primary-400">{session.analysis?.overall?.score || 0}</div>
                       <div className="text-[10px] uppercase tracking-wider text-[#6b6b80]">Score</div>
                     </div>
                   </Link>
