@@ -12,13 +12,13 @@
 - [x] Authentication flow (login, signup pages + Google OAuth + Supabase Auth + middleware)
 - [x] Onboarding flow (goal selection, level selection, initial assessment)
 
-## Phase 2: Core Recording Flow ✅ (~95% done)
+## Phase 2: Core Recording Flow ✅ (100% done)
 - [x] Recording Studio page UI (waveform visualizer, timer, controls)
 - [x] Audio capture engine (Web Audio API + AnalyserNode + MediaRecorder)
 - [x] Client-side audio analysis pipeline (pause detection, silence threshold, timing)
 - [x] Live transcription with Web Speech API (continuous + interim results)
 - [x] Rich metadata extraction (WPM, pauses, confidence, filler detection)
-- [ ] Audio file upload to Supabase Storage (blob created, upload script integration pending)
+- [x] Audio file upload to Supabase Storage (blob created, upload script integration implemented)
 - [x] Topic system (categories, random topic, topic picker modal)
 - [x] Gemini API integration (analysis prompt with rich audio metadata + mock fallback)
 - [x] Evaluation results page (6-tab analysis view with interactive details)
@@ -76,7 +76,7 @@
 | Phase | Status | Completion |
 |-------|--------|------------|
 | Phase 1: Foundation | ✅ Done | 100% |
-| Phase 2: Core Recording | ✅ Mostly Done | ~95% |
+| Phase 2: Core Recording | ✅ Done | 100% |
 | Phase 3: Vocab & Progress | ✅ Done | 100% |
 | Phase 4: Conversation | ❌ Not Started | 0% |
 | Phase 5: Curriculum | ❌ Not Started | 0% |
@@ -87,4 +87,4 @@
 - Integrated Supabase backend storage (removed localStorage).
 - Sidebar navigation includes a fully functional Logout button.
 - AppLayout dynamically checks Supabase hydration before rendering the application.
-- SQL Migration created for Database implementation.
+- SQL Migration created for Database implementation, RLS storage policy applied, and audio upload implemented logic injected.

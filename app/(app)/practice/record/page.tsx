@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAppStore } from "@/lib/store";
+import { createClient } from "@/lib/supabase/client";
 
 // Use window-level access for cross-browser Speech Recognition
 function getSpeechRecognitionAPI(): (new () => SpeechRecognition) | null {
@@ -316,8 +317,30 @@ function RecordContent() {
 
     const finalFullText = transcript + " " + interimTranscript;
     const wpm = secondsElapsed > 0 ? (finalFullText.split(" ").length / (secondsElapsed / 60)) : 0;
+    const sessionId = `ses_${Date.now()}`;
 
     try {
+      // 1. Upload audio to Supabase Storage
+      const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      let storageUrl = undefined;
+      if (user) {
+        const filePath = `${user.id}/${sessionId}.webm`;
+        const { error: uploadError } = await supabase.storage
+          .from("sessions_audio")
+          .upload(filePath, audioBlob, { contentType: "audio/webm" });
+
+        if (!uploadError) {
+          const { data } = supabase.storage.from("sessions_audio").getPublicUrl(filePath);
+          storageUrl = data.publicUrl;
+        } else {
+          console.error("Audio upload failed:", uploadError.message);
+        }
+      }
+
+      // 2. Fetch analysis from AI
       const response = await fetch("/api/ai/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -334,13 +357,13 @@ function RecordContent() {
       
       const analysisData = await response.json();
 
-      const sessionId = `ses_${Date.now()}`;
       addSession({
         id: sessionId,
         type: "recording",
         topic,
         category,
         transcript: finalFullText,
+        audioUrl: storageUrl,
         analysis: analysisData,
         audioMetadata: {
           totalDurationSeconds: secondsElapsed,
@@ -386,7 +409,7 @@ function RecordContent() {
   };
 
   return (
-    <div className="page-container h-[calc(100vh-2rem)] md:h-[calc(100vh-4rem)] flex flex-col relative">
+    <div className="page-container min-h-[calc(100vh-2rem)] md:min-h-[calc(100vh-4rem)] flex flex-col relative py-4">
 
       {/* Topic Picker Modal */}
       {showTopicPicker && (
@@ -447,7 +470,7 @@ function RecordContent() {
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 shrink-0">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 shrink-0">
         <div>
           <h1 className="heading-3 mb-1">Recording Studio</h1>
           <p className="text-[#a0a0b5] text-base">Clear your mind and speak naturally.</p>
@@ -473,8 +496,8 @@ function RecordContent() {
 
       <div className="flex-1 flex flex-col items-center justify-center max-w-3xl mx-auto w-full">
         {/* Topic Card */}
-        <div className={`w-full text-center transition-all duration-500 mb-8 ${state === "recording" ? "scale-105" : ""}`}>
-          <div className="inline-block px-3 py-1 bg-background-elevated border border-[rgba(255,255,255,0.06)] rounded-full text-xs font-semibold uppercase tracking-widest text-primary-400 mb-4">
+        <div className={`w-full text-center transition-all duration-500 mb-6 ${state === "recording" ? "scale-105" : ""}`}>
+          <div className="inline-block px-3 py-1 bg-background-elevated border border-[rgba(255,255,255,0.06)] rounded-full text-xs font-semibold uppercase tracking-widest text-primary-400 mb-2">
             {category}
           </div>
           <h2 className="text-3xl md:text-5xl font-bold leading-tight mb-2">
@@ -483,7 +506,7 @@ function RecordContent() {
         </div>
 
         {/* Live Transcript / Empty state */}
-        <div className="w-full h-48 md:h-64 bg-background-tertiary border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 mb-8 overflow-y-auto flex flex-col relative">
+        <div className="w-full flex-1 min-h-[140px] max-h-[180px] md:max-h-[220px] bg-background-tertiary border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 mb-6 overflow-y-auto flex flex-col relative shrinks-0">
           {state === "idle" && (
              <div className="m-auto text-[#6b6b80] max-w-sm text-center">
                Hit record when you&apos;re ready. Try to speak continuously for at least 2 minutes without worrying about mistakes.
@@ -509,13 +532,13 @@ function RecordContent() {
 
         {/* Controls & Visualizer */}
         {state !== "processing" && (
-          <div className="w-full flex flex-col items-center gap-8">
+          <div className="w-full flex flex-col items-center gap-4">
             <div className="text-4xl md:text-5xl font-mono font-medium tracking-tight">
               {timerDisplay}
             </div>
 
             {/* Audio Wave Visualizer */}
-            <div className="flex items-center justify-center gap-1 h-16 md:h-24 w-full max-w-lg mb-4">
+            <div className="flex items-center justify-center gap-1 h-12 md:h-16 w-full max-w-lg mb-2">
               {renderBars()}
             </div>
 

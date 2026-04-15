@@ -75,6 +75,7 @@ export interface Session {
   topic: string;
   category: string;
   transcript: string;
+  audioUrl?: string;
   analysis: SessionAnalysis;
   audioMetadata: {
     totalDurationSeconds: number;
@@ -439,6 +440,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
         transcript: session.transcript,
         analysis: session.analysis,
         audio_metadata: session.audioMetadata,
+        audio_url: session.audioUrl,
         xp_earned: session.xpEarned,
         created_at: session.createdAt
       });
