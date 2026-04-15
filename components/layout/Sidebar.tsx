@@ -129,6 +129,19 @@ export default function Sidebar({
         {/* Bottom */}
         <div className="mt-auto pt-4 border-t border-[rgba(255,255,255,0.06)]">
           {renderNavSection(bottomNav)}
+          
+          <button
+            onClick={async () => {
+              const { createClient } = await import("@/lib/supabase/client");
+              const supabase = createClient();
+              await supabase.auth.signOut();
+              window.location.href = "/login";
+            }}
+            className="flex items-center gap-3 px-3 py-2 rounded-md font-medium transition-all duration-150 whitespace-nowrap text-danger-400 hover:text-danger-300 hover:bg-[rgba(244,63,94,0.1)] w-full text-left mt-1"
+          >
+            <span className="w-5 h-5 flex items-center justify-center shrink-0 text-base">🚪</span>
+            <span>Logout</span>
+          </button>
         </div>
       </aside>
     </>

@@ -1,12 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import { useAppStore } from "@/lib/store";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { currentStreak, totalXp, currentLevel, currentLevelTitle } = useAppStore();
+  const { currentStreak, totalXp, currentLevel, currentLevelTitle, initializeStore, isHydrated, profile } = useAppStore();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isHydrated) {
+      initializeStore();
+    } else if (isHydrated && !profile.onboardingComplete) {
+      router.push("/onboarding");
+    }
+  }, [isHydrated, initializeStore, profile.onboardingComplete, router]);
+
+  if (!isHydrated || !profile.onboardingComplete) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background-primary">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-[#a0a0b5]">Loading workspace...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen">

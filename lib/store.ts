@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createClient } from "@/lib/supabase/client";
 
 // ---- Types ----
 export interface SessionAnalysis {
@@ -150,6 +150,10 @@ export const ALL_BADGES: Badge[] = [
 ];
 
 interface AppState {
+  // Initialization state
+  isHydrated: boolean;
+  initializeStore: () => Promise<void>;
+
   // User profile (onboarding)
   profile: UserProfile;
 
@@ -176,20 +180,20 @@ interface AppState {
   badges: Badge[];
 
   // Actions
-  setProfile: (profile: Partial<UserProfile>) => void;
-  completeOnboarding: () => void;
-  addSession: (session: Session) => void;
+  setProfile: (profile: Partial<UserProfile>) => Promise<void>;
+  completeOnboarding: () => Promise<void>;
+  addSession: (session: Session) => Promise<void>;
   setCurrentSession: (session: Session | null) => void;
-  addXp: (amount: number) => void;
-  updateStreak: () => void;
-  addVocabWord: (word: VocabWord) => void;
-  removeVocabWord: (id: string) => void;
-  updateVocabMastery: (id: string, level: VocabWord["masteryLevel"]) => void;
+  addXp: (amount: number) => Promise<void>;
+  updateStreak: () => Promise<void>;
+  addVocabWord: (word: VocabWord) => Promise<void>;
+  removeVocabWord: (id: string) => Promise<void>;
+  updateVocabMastery: (id: string, level: VocabWord["masteryLevel"]) => Promise<void>;
   // FSRS
-  reviewWord: (wordId: string, rating: 1 | 2 | 3 | 4) => void;
+  reviewWord: (wordId: string, rating: 1 | 2 | 3 | 4) => Promise<void>;
   getWordsDueForReview: () => VocabWord[];
   // Badges
-  checkAndUnlockBadges: () => Badge[];
+  checkAndUnlockBadges: () => Promise<Badge[]>;
 }
 
 // ---- Level Thresholds ----
@@ -220,8 +224,6 @@ function getLevelFromXp(xp: number): { level: number; title: string } {
 }
 
 // ---- FSRS Algorithm (Simplified) ----
-// Based on the Free Spaced Repetition Scheduler
-// Rating: 1=Again, 2=Hard, 3=Good, 4=Easy
 function computeFSRS(card: FSRSCard, rating: 1 | 2 | 3 | 4): FSRSCard {
   const now = new Date();
   const w = [0.4, 0.6, 2.4, 5.8, 4.93, 0.94, 0.86, 0.01, 1.49, 0.14, 0.94, 2.18, 0.05, 0.34, 1.26, 0.29, 2.61];
@@ -229,29 +231,24 @@ function computeFSRS(card: FSRSCard, rating: 1 | 2 | 3 | 4): FSRSCard {
   let { stability, difficulty, reps, lapses } = card;
 
   if (reps === 0) {
-    // First review — initial stability based on rating
     stability = w[rating - 1];
     difficulty = w[4] - (rating - 3) * w[5];
     difficulty = Math.max(1, Math.min(10, difficulty));
     reps = 1;
     if (rating === 1) lapses++;
   } else {
-    // Subsequent reviews
     const elapsed = (now.getTime() - new Date(card.lastReview).getTime()) / (1000 * 60 * 60 * 24);
     const retrievability = Math.pow(1 + elapsed / (9 * stability), -1);
 
-    // Update difficulty
     difficulty = difficulty - w[6] * (rating - 3);
     difficulty = Math.max(1, Math.min(10, difficulty));
 
     if (rating === 1) {
-      // Forgot — reduce stability
       stability = w[11] * Math.pow(difficulty, -w[12]) * (Math.pow(stability + 1, w[13]) - 1) * Math.exp(w[14] * (1 - retrievability));
       stability = Math.max(0.1, stability);
       lapses++;
       reps = 0;
     } else {
-      // Remembered — increase stability
       const hardPenalty = rating === 2 ? w[15] : 1;
       const easyBonus = rating === 4 ? w[16] : 1;
       stability = stability * (1 + Math.exp(w[8]) * (11 - difficulty) * Math.pow(stability, -w[9]) * (Math.exp(w[10] * (1 - retrievability)) - 1) * hardPenalty * easyBonus);
@@ -273,214 +270,426 @@ function computeFSRS(card: FSRSCard, rating: 1 | 2 | 3 | 4): FSRSCard {
   };
 }
 
-export const useAppStore = create<AppState>()(
-  persist(
-    (set, get) => ({
-      profile: {
-        displayName: "",
-        goal: "",
-        currentLevel: "",
-        nativeLanguage: "",
-        dailyGoalMinutes: 5,
-        onboardingComplete: false,
-      },
-      totalXp: 0,
-      currentLevel: 1,
-      currentLevelTitle: "Novice Communicator",
-      currentStreak: 0,
-      longestStreak: 0,
-      lastPracticeDate: null,
-      streakFreezesAvailable: 0,
-      sessions: [],
-      currentSession: null,
-      vocabularyBank: [],
-      fsrsCards: [],
-      badges: ALL_BADGES.map((b) => ({ ...b })),
+export const useAppStore = create<AppState>()((set, get) => ({
+  isHydrated: false,
+  profile: {
+    displayName: "",
+    goal: "",
+    currentLevel: "",
+    nativeLanguage: "",
+    dailyGoalMinutes: 5,
+    onboardingComplete: false,
+  },
+  totalXp: 0,
+  currentLevel: 1,
+  currentLevelTitle: "Novice Communicator",
+  currentStreak: 0,
+  longestStreak: 0,
+  lastPracticeDate: null,
+  streakFreezesAvailable: 0,
+  sessions: [],
+  currentSession: null,
+  vocabularyBank: [],
+  fsrsCards: [],
+  badges: ALL_BADGES.map((b) => ({ ...b })),
 
-      setProfile: (partial) =>
-        set((state) => ({
-          profile: { ...state.profile, ...partial },
-        })),
+  initializeStore: async () => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-      completeOnboarding: () =>
-        set((state) => ({
-          profile: { ...state.profile, onboardingComplete: true },
-        })),
-
-      addSession: (session) =>
-        set((state) => ({
-          sessions: [session, ...state.sessions],
-          currentSession: session,
-        })),
-
-      setCurrentSession: (session) => set({ currentSession: session }),
-
-      addXp: (amount) =>
-        set((state) => {
-          const newXp = state.totalXp + amount;
-          const { level, title } = getLevelFromXp(newXp);
-          return {
-            totalXp: newXp,
-            currentLevel: level,
-            currentLevelTitle: title,
-          };
-        }),
-
-      updateStreak: () =>
-        set((state) => {
-          const today = new Date().toISOString().split("T")[0];
-          const yesterday = new Date(Date.now() - 86400000)
-            .toISOString()
-            .split("T")[0];
-
-          if (state.lastPracticeDate === today) {
-            return state; // Already practiced today
-          }
-
-          let newStreak = 1;
-          if (state.lastPracticeDate === yesterday) {
-            newStreak = state.currentStreak + 1;
-          }
-
-          const newLongest = Math.max(state.longestStreak, newStreak);
-
-          // Earn streak freeze every 7 days
-          const newFreezes =
-            newStreak % 7 === 0
-              ? Math.min(state.streakFreezesAvailable + 1, 2)
-              : state.streakFreezesAvailable;
-
-          return {
-            currentStreak: newStreak,
-            longestStreak: newLongest,
-            lastPracticeDate: today,
-            streakFreezesAvailable: newFreezes,
-          };
-        }),
-
-      addVocabWord: (word) =>
-        set((state) => {
-          // Don't add duplicates
-          if (state.vocabularyBank.some((w) => w.word === word.word)) {
-            return state;
-          }
-          // Create FSRS card for new word
-          const newCard: FSRSCard = {
-            wordId: word.id,
-            stability: 0,
-            difficulty: 0,
-            lastReview: "",
-            nextReview: new Date().toISOString(), // Due immediately
-            reps: 0,
-            lapses: 0,
-          };
-          return {
-            vocabularyBank: [word, ...state.vocabularyBank],
-            fsrsCards: [newCard, ...state.fsrsCards],
-          };
-        }),
-
-      removeVocabWord: (id) =>
-        set((state) => ({
-          vocabularyBank: state.vocabularyBank.filter((w) => w.id !== id),
-          fsrsCards: state.fsrsCards.filter((c) => c.wordId !== id),
-        })),
-
-      updateVocabMastery: (id, level) =>
-        set((state) => ({
-          vocabularyBank: state.vocabularyBank.map((w) =>
-            w.id === id ? { ...w, masteryLevel: level } : w
-          ),
-        })),
-
-      reviewWord: (wordId, rating) =>
-        set((state) => {
-          const cardIndex = state.fsrsCards.findIndex((c) => c.wordId === wordId);
-          if (cardIndex === -1) return state;
-
-          const oldCard = state.fsrsCards[cardIndex];
-          const newCard = computeFSRS(oldCard, rating);
-
-          const updatedCards = [...state.fsrsCards];
-          updatedCards[cardIndex] = newCard;
-
-          // Update mastery level based on reps
-          let newMastery: VocabWord["masteryLevel"] = "new";
-          if (newCard.reps >= 5 && newCard.lapses === 0) newMastery = "mastered";
-          else if (newCard.reps >= 3) newMastery = "familiar";
-          else if (newCard.reps >= 1) newMastery = "learning";
-
-          const updatedVocab = state.vocabularyBank.map((w) =>
-            w.id === wordId
-              ? { ...w, masteryLevel: newMastery, nextReviewDate: newCard.nextReview, reps: newCard.reps }
-              : w
-          );
-
-          return {
-            fsrsCards: updatedCards,
-            vocabularyBank: updatedVocab,
-          };
-        }),
-
-      getWordsDueForReview: () => {
-        const state = get();
-        const now = new Date();
-        return state.vocabularyBank.filter((word) => {
-          const card = state.fsrsCards.find((c) => c.wordId === word.id);
-          if (!card) return true; // new word with no card
-          return new Date(card.nextReview) <= now;
-        });
-      },
-
-      checkAndUnlockBadges: () => {
-        const state = get();
-        const newlyUnlocked: Badge[] = [];
-        const now = new Date().toISOString();
-
-        const masteredCount = state.vocabularyBank.filter((w) => w.masteryLevel === "mastered").length;
-        const highestScore = state.sessions.length > 0
-          ? Math.max(...state.sessions.map((s) => s.analysis.overall.score))
-          : 0;
-
-        const updatedBadges = state.badges.map((badge) => {
-          if (badge.unlockedAt) return badge; // Already unlocked
-
-          let shouldUnlock = false;
-          switch (badge.id) {
-            case "first_session": shouldUnlock = state.sessions.length >= 1; break;
-            case "streak_3": shouldUnlock = state.currentStreak >= 3; break;
-            case "streak_7": shouldUnlock = state.currentStreak >= 7; break;
-            case "streak_30": shouldUnlock = state.currentStreak >= 30; break;
-            case "vocab_10": shouldUnlock = state.vocabularyBank.length >= 10; break;
-            case "vocab_50": shouldUnlock = state.vocabularyBank.length >= 50; break;
-            case "vocab_master_5": shouldUnlock = masteredCount >= 5; break;
-            case "score_80": shouldUnlock = highestScore >= 80; break;
-            case "score_90": shouldUnlock = highestScore >= 90; break;
-            case "sessions_5": shouldUnlock = state.sessions.length >= 5; break;
-            case "sessions_25": shouldUnlock = state.sessions.length >= 25; break;
-            case "level_3": shouldUnlock = state.currentLevel >= 3; break;
-            case "level_5": shouldUnlock = state.currentLevel >= 5; break;
-            case "xp_1000": shouldUnlock = state.totalXp >= 1000; break;
-            case "xp_5000": shouldUnlock = state.totalXp >= 5000; break;
-          }
-
-          if (shouldUnlock) {
-            const unlocked = { ...badge, unlockedAt: now };
-            newlyUnlocked.push(unlocked);
-            return unlocked;
-          }
-          return badge;
-        });
-
-        if (newlyUnlocked.length > 0) {
-          set({ badges: updatedBadges });
-        }
-
-        return newlyUnlocked;
-      },
-    }),
-    {
-      name: "fluentmind-store",
+    if (!user) {
+      set({ isHydrated: true });
+      return;
     }
-  )
-);
+
+    try {
+      const [{ data: pData }, { data: progData }, { data: sData }, { data: vData }, { data: fData }] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', user.id).single(),
+        supabase.from('user_progress').select('*').eq('id', user.id).single(),
+        supabase.from('sessions').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+        supabase.from('vocabulary_words').select('*').eq('user_id', user.id),
+        supabase.from('fsrs_cards').select('*').eq('user_id', user.id)
+      ]);
+
+      if (pData) {
+        set({
+          profile: {
+            displayName: pData.display_name,
+            goal: pData.goal,
+            currentLevel: pData.current_level,
+            nativeLanguage: pData.native_language,
+            dailyGoalMinutes: pData.daily_goal_minutes,
+            onboardingComplete: pData.onboarding_complete,
+          }
+        });
+      }
+
+      if (progData) {
+        // Merge fetched badges with ALL_BADGES so UI always shows complete list
+        const fetchedBadges = Array.isArray(progData.badges) ? progData.badges : [];
+        const badgesMap = new Map(fetchedBadges.map((b: any) => [b.id, b]));
+        const mergedBadges = ALL_BADGES.map(b => (badgesMap.has(b.id) ? badgesMap.get(b.id) : { ...b })) as Badge[];
+        
+        set({
+          totalXp: progData.total_xp,
+          currentLevel: progData.current_level,
+          currentLevelTitle: progData.current_level_title,
+          currentStreak: progData.current_streak,
+          longestStreak: progData.longest_streak,
+          lastPracticeDate: progData.last_practice_date,
+          streakFreezesAvailable: progData.streak_freezes_available,
+          badges: mergedBadges,
+        });
+      }
+
+      if (sData) {
+        set({
+          sessions: sData.map((s: any) => ({
+            id: s.id,
+            type: s.type,
+            topic: s.topic,
+            category: s.category,
+            transcript: s.transcript,
+            analysis: s.analysis,
+            audioMetadata: s.audio_metadata,
+            xpEarned: s.xp_earned,
+            createdAt: s.created_at
+          }))
+        });
+      }
+
+      if (vData) {
+        set({
+          vocabularyBank: vData.map((v: any) => ({
+            id: v.id,
+            word: v.word,
+            definition: v.definition,
+            register: v.register,
+            context: v.context,
+            cefrLevel: v.cefr_level,
+            masteryLevel: v.mastery_level,
+            nextReviewDate: v.next_review_date,
+            reps: v.reps,
+            addedAt: v.added_at
+          }))
+        });
+      }
+
+      if (fData) {
+        set({
+           fsrsCards: fData.map((f: any) => ({
+             wordId: f.word_id,
+             stability: f.stability,
+             difficulty: f.difficulty,
+             lastReview: f.last_review,
+             nextReview: f.next_review,
+             reps: f.reps,
+             lapses: f.lapses
+           }))
+        })
+      }
+
+      set({ isHydrated: true });
+    } catch (e) {
+      console.error("Hydration failed", e);
+      set({ isHydrated: true });
+    }
+  },
+
+  setProfile: async (partial) => {
+    const state = get();
+    const newProfile = { ...state.profile, ...partial };
+    set({ profile: newProfile });
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from('profiles').update({
+        display_name: newProfile.displayName,
+        goal: newProfile.goal,
+        current_level: newProfile.currentLevel,
+        native_language: newProfile.nativeLanguage,
+        daily_goal_minutes: newProfile.dailyGoalMinutes,
+        onboarding_complete: newProfile.onboardingComplete
+      }).eq('id', user.id);
+    }
+  },
+
+  completeOnboarding: async () => {
+    const state = get();
+    await state.setProfile({ onboardingComplete: true });
+  },
+
+  addSession: async (session) => {
+    const state = get();
+    set({
+      sessions: [session, ...state.sessions],
+      currentSession: session,
+    });
+    
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from('sessions').insert({
+        id: session.id,
+        user_id: user.id,
+        type: session.type,
+        topic: session.topic,
+        category: session.category,
+        transcript: session.transcript,
+        analysis: session.analysis,
+        audio_metadata: session.audioMetadata,
+        xp_earned: session.xpEarned,
+        created_at: session.createdAt
+      });
+    }
+  },
+
+  setCurrentSession: (session) => set({ currentSession: session }),
+
+  addXp: async (amount) => {
+    const state = get();
+    const newXp = state.totalXp + amount;
+    const { level, title } = getLevelFromXp(newXp);
+    
+    set({
+      totalXp: newXp,
+      currentLevel: level,
+      currentLevelTitle: title,
+    });
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from('user_progress').update({
+        total_xp: newXp,
+        current_level: level,
+        current_level_title: title
+      }).eq('id', user.id);
+    }
+  },
+
+  updateStreak: async () => {
+    const state = get();
+    const today = new Date().toISOString().split("T")[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+
+    if (state.lastPracticeDate === today) return;
+
+    let newStreak = 1;
+    if (state.lastPracticeDate === yesterday) {
+      newStreak = state.currentStreak + 1;
+    }
+
+    const newLongest = Math.max(state.longestStreak, newStreak);
+    const newFreezes = newStreak % 7 === 0 ? Math.min(state.streakFreezesAvailable + 1, 2) : state.streakFreezesAvailable;
+
+    set({
+      currentStreak: newStreak,
+      longestStreak: newLongest,
+      lastPracticeDate: today,
+      streakFreezesAvailable: newFreezes,
+    });
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+       await supabase.from('user_progress').update({
+         current_streak: newStreak,
+         longest_streak: newLongest,
+         last_practice_date: today,
+         streak_freezes_available: newFreezes
+       }).eq('id', user.id);
+    }
+  },
+
+  addVocabWord: async (word) => {
+    const state = get();
+    if (state.vocabularyBank.some((w) => w.word === word.word)) return;
+    
+    const newCard: FSRSCard = {
+      wordId: word.id,
+      stability: 0,
+      difficulty: 0,
+      lastReview: "",
+      nextReview: new Date().toISOString(),
+      reps: 0,
+      lapses: 0,
+    };
+    
+    set({
+      vocabularyBank: [word, ...state.vocabularyBank],
+      fsrsCards: [newCard, ...state.fsrsCards],
+    });
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from('vocabulary_words').insert({
+        id: word.id,
+        user_id: user.id,
+        word: word.word,
+        definition: word.definition,
+        register: word.register,
+        context: word.context,
+        cefr_level: word.cefrLevel,
+        mastery_level: word.masteryLevel,
+        next_review_date: word.nextReviewDate,
+        reps: word.reps,
+        added_at: word.addedAt
+      });
+      await supabase.from('fsrs_cards').insert({
+        word_id: word.id,
+        user_id: user.id,
+        stability: newCard.stability,
+        difficulty: newCard.difficulty,
+        last_review: null,
+        next_review: newCard.nextReview,
+        reps: newCard.reps,
+        lapses: newCard.lapses
+      });
+    }
+  },
+
+  removeVocabWord: async (id) => {
+    const state = get();
+    set({
+      vocabularyBank: state.vocabularyBank.filter((w) => w.id !== id),
+      fsrsCards: state.fsrsCards.filter((c) => c.wordId !== id),
+    });
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from('vocabulary_words').delete().eq('id', id).eq('user_id', user.id);
+      // fsrs_cards deletes automatically via ON DELETE CASCADE in SQL
+    }
+  },
+
+  updateVocabMastery: async (id, level) => {
+    const state = get();
+    set({
+      vocabularyBank: state.vocabularyBank.map((w) =>
+        w.id === id ? { ...w, masteryLevel: level } : w
+      ),
+    });
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from('vocabulary_words').update({ mastery_level: level }).eq('id', id).eq('user_id', user.id);
+    }
+  },
+
+  reviewWord: async (wordId, rating) => {
+    const state = get();
+    const cardIndex = state.fsrsCards.findIndex((c) => c.wordId === wordId);
+    if (cardIndex === -1) return;
+
+    const oldCard = state.fsrsCards[cardIndex];
+    const newCard = computeFSRS(oldCard, rating);
+
+    const updatedCards = [...state.fsrsCards];
+    updatedCards[cardIndex] = newCard;
+
+    let newMastery: VocabWord["masteryLevel"] = "new";
+    if (newCard.reps >= 5 && newCard.lapses === 0) newMastery = "mastered";
+    else if (newCard.reps >= 3) newMastery = "familiar";
+    else if (newCard.reps >= 1) newMastery = "learning";
+
+    const updatedVocab = state.vocabularyBank.map((w) =>
+      w.id === wordId
+        ? { ...w, masteryLevel: newMastery, nextReviewDate: newCard.nextReview, reps: newCard.reps }
+        : w
+    );
+
+    set({
+      fsrsCards: updatedCards,
+      vocabularyBank: updatedVocab,
+    });
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from('fsrs_cards').update({
+        stability: newCard.stability,
+        difficulty: newCard.difficulty,
+        last_review: newCard.lastReview,
+        next_review: newCard.nextReview,
+        reps: newCard.reps,
+        lapses: newCard.lapses
+      }).eq('word_id', wordId).eq('user_id', user.id);
+
+      await supabase.from('vocabulary_words').update({
+        mastery_level: newMastery,
+        next_review_date: newCard.nextReview,
+        reps: newCard.reps
+      }).eq('id', wordId).eq('user_id', user.id);
+    }
+  },
+
+  getWordsDueForReview: () => {
+    const state = get();
+    const now = new Date();
+    return state.vocabularyBank.filter((word) => {
+      const card = state.fsrsCards.find((c) => c.wordId === word.id);
+      if (!card) return true;
+      return new Date(card.nextReview) <= now;
+    });
+  },
+
+  checkAndUnlockBadges: async () => {
+    const state = get();
+    const newlyUnlocked: Badge[] = [];
+    const now = new Date().toISOString();
+
+    const masteredCount = state.vocabularyBank.filter((w) => w.masteryLevel === "mastered").length;
+    const highestScore = state.sessions.length > 0
+      ? Math.max(...state.sessions.map((s) => s.analysis.overall.score))
+      : 0;
+
+    const updatedBadges = state.badges.map((badge) => {
+      if (badge.unlockedAt) return badge;
+
+      let shouldUnlock = false;
+      switch (badge.id) {
+        case "first_session": shouldUnlock = state.sessions.length >= 1; break;
+        case "streak_3": shouldUnlock = state.currentStreak >= 3; break;
+        case "streak_7": shouldUnlock = state.currentStreak >= 7; break;
+        case "streak_30": shouldUnlock = state.currentStreak >= 30; break;
+        case "vocab_10": shouldUnlock = state.vocabularyBank.length >= 10; break;
+        case "vocab_50": shouldUnlock = state.vocabularyBank.length >= 50; break;
+        case "vocab_master_5": shouldUnlock = masteredCount >= 5; break;
+        case "score_80": shouldUnlock = highestScore >= 80; break;
+        case "score_90": shouldUnlock = highestScore >= 90; break;
+        case "sessions_5": shouldUnlock = state.sessions.length >= 5; break;
+        case "sessions_25": shouldUnlock = state.sessions.length >= 25; break;
+        case "level_3": shouldUnlock = state.currentLevel >= 3; break;
+        case "level_5": shouldUnlock = state.currentLevel >= 5; break;
+        case "xp_1000": shouldUnlock = state.totalXp >= 1000; break;
+        case "xp_5000": shouldUnlock = state.totalXp >= 5000; break;
+      }
+
+      if (shouldUnlock) {
+        const unlocked = { ...badge, unlockedAt: now };
+        newlyUnlocked.push(unlocked);
+        return unlocked;
+      }
+      return badge;
+    });
+
+    if (newlyUnlocked.length > 0) {
+      set({ badges: updatedBadges });
+      
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('user_progress').update({
+          badges: updatedBadges
+        }).eq('id', user.id);
+      }
+    }
+
+    return newlyUnlocked;
+  },
+}));

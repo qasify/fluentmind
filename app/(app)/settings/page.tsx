@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppStore } from "@/lib/store";
+import { createClient } from "@/lib/supabase/client";
 
 export default function SettingsPage() {
   const { profile, setProfile } = useAppStore();
@@ -10,6 +11,23 @@ export default function SettingsPage() {
       <div className="page-header">
         <h1 className="page-title">⚙️ Settings</h1>
         <p className="page-subtitle">Customize your FluentMind experience</p>
+      </div>
+
+      <div className="card p-6 mb-4 flex items-center justify-between">
+        <div>
+          <h3 className="heading-5 mb-1">Account Management</h3>
+          <p className="text-sm text-[#a0a0b5]">Manage your login session</p>
+        </div>
+        <button
+          className="btn border-danger-500/30 text-danger-400 hover:bg-danger-500/10 hover:border-danger-500 border border-transparent px-4 py-2 rounded-xl transition-colors font-medium flex items-center gap-2"
+          onClick={async () => {
+            const supabase = createClient();
+            await supabase.auth.signOut();
+            window.location.href = "/login";
+          }}
+        >
+          🚪 Logout / Switch User
+        </button>
       </div>
 
       <div className="card p-6 mb-4">
