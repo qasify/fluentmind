@@ -3,6 +3,7 @@
 import { useState, use } from "react";
 import Link from "next/link";
 import { useAppStore, type SessionAnalysis } from "@/lib/store";
+import AudioPlayer from "@/components/ui/AudioPlayer";
 
 type Dimension = "clarity" | "vocabulary" | "grammar" | "structure" | "fluency" | "confidence";
 
@@ -65,6 +66,7 @@ function getScoreColorClass(score: number): string {
   if (score >= 60) return "text-warning-400";
   return "text-danger-400";
 }
+
 
 export default function EvaluationPage({
   params,
@@ -348,11 +350,14 @@ export default function EvaluationPage({
       {session?.audioUrl ? (
         <div className="bg-background-secondary border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 md:p-8 mb-8 shadow-xl">
           <h3 className="heading-4 mb-4 flex items-center gap-3">
-            <span className="p-2 bg-background-elevated rounded-lg">▶️</span>
-            Listen Back
+            <span className="p-2 bg-background-elevated rounded-lg">🎤</span>
+            Transcription & Playback
           </h3>
-          <div className="w-full flex justify-center mb-6">
-            <audio src={session.audioUrl} controls className="w-full max-w-lg" />
+          <div className="w-full mb-6">
+            <AudioPlayer
+              src={session.audioUrl}
+              durationOverride={session.audioMetadata?.totalDurationSeconds || 0}
+            />
           </div>
           <div className="text-secondary text-sm italic border-l-2 border-primary-500/50 pl-4 py-2">
             &quot;{session.transcript}&quot;

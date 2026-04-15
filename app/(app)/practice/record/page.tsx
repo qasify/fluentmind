@@ -315,16 +315,18 @@ function RecordContent() {
 
     const { pauseCount, totalSilenceSeconds } = audioAnalysisRef.current;
 
-    const finalFullText = transcript + " " + interimTranscript;
-    const wpm = secondsElapsed > 0 ? (finalFullText.split(" ").length / (secondsElapsed / 60)) : 0;
+    // Browser transcript used only as fallback
+    const browserTranscript = (transcript + " " + interimTranscript).trim();
+    const wpm = secondsElapsed > 0 ? (browserTranscript.split(" ").length / (secondsElapsed / 60)) : 0;
     const sessionId = `ses_${Date.now()}`;
 
     try {
-      // 1. Upload audio to Supabase Storage
+      // 1. Build the audio blob
       const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       
+      // 2. Upload audio to Supabase Storage
       let storageUrl = undefined;
       if (user) {
         const filePath = `${user.id}/${sessionId}.webm`;
@@ -340,29 +342,33 @@ function RecordContent() {
         }
       }
 
-      // 2. Fetch analysis from AI
+      // 3. Send raw audio to Gemini for transcription + analysis
+      const formData = new FormData();
+      formData.append("audio", audioBlob, `${sessionId}.webm`);
+      formData.append("topic", topic);
+      formData.append("category", category);
+      formData.append("duration", String(secondsElapsed));
+      formData.append("wpm", String(Math.round(wpm)));
+      formData.append("pauseCount", String(pauseCount));
+
       const response = await fetch("/api/ai/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: finalFullText,
-          duration: secondsElapsed,
-          wpm: Math.round(wpm),
-          pauseCount,
-          topic
-        })
+        body: formData, // No Content-Type header — browser sets multipart boundary
       });
 
       if (!response.ok) throw new Error("Analysis failed");
       
       const analysisData = await response.json();
 
+      // Use Gemini's transcript if available, otherwise fall back to browser transcript
+      const finalTranscript = analysisData.transcript || browserTranscript;
+
       addSession({
         id: sessionId,
         type: "recording",
         topic,
         category,
-        transcript: finalFullText,
+        transcript: finalTranscript,
         audioUrl: storageUrl,
         analysis: analysisData.analysis,
         audioMetadata: {

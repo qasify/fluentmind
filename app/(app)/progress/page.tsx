@@ -22,7 +22,7 @@ export default function ProgressPage() {
 
   // Calculate averages from sessions
   const avgScore = sessions.length > 0
-    ? Math.round(sessions.reduce((sum, s) => sum + s.analysis.overall.score, 0) / sessions.length)
+    ? Math.round(sessions.reduce((sum, s) => sum + (s.analysis.overall?.score ?? 0), 0) / sessions.length)
     : 0;
 
   const avgWpm = sessions.length > 0
@@ -47,7 +47,7 @@ export default function ProgressPage() {
   // Session score trend (last 10)
   const scoreTrend = sessions.slice(0, 10).reverse().map((s, i) => ({
     label: `S${i + 1}`,
-    score: s.analysis.overall.score,
+    score: s.analysis.overall?.score ?? 0,
   }));
 
   // XP milestones
@@ -137,9 +137,8 @@ export default function ProgressPage() {
                       initial={{ width: 0 }}
                       animate={{ width: `${dimAverages[i]}%` }}
                       transition={{ delay: i * 0.1, duration: 0.6, ease: "easeOut" }}
-                      className={`h-full rounded-full ${
-                        dimAverages[i] >= 80 ? "bg-success-400" : dimAverages[i] >= 60 ? "bg-warning-400" : "bg-danger-400"
-                      }`}
+                      className={`h-full rounded-full ${dimAverages[i] >= 80 ? "bg-success-400" : dimAverages[i] >= 60 ? "bg-warning-400" : "bg-danger-400"
+                        }`}
                     />
                   </div>
                   <span className="text-sm font-bold w-8 text-right">{dimAverages[i]}</span>
@@ -226,11 +225,10 @@ export default function ProgressPage() {
           {badges.map((badge) => (
             <div
               key={badge.id}
-              className={`flex flex-col items-center p-4 rounded-xl border text-center transition-all ${
-                badge.unlockedAt
-                  ? "bg-primary-500/5 border-primary-500/20"
-                  : "bg-background-tertiary border-[rgba(255,255,255,0.04)] opacity-40 grayscale"
-              }`}
+              className={`flex flex-col items-center p-4 rounded-xl border text-center transition-all ${badge.unlockedAt
+                ? "bg-primary-500/5 border-primary-500/20"
+                : "bg-background-tertiary border-[rgba(255,255,255,0.04)] opacity-40 grayscale"
+                }`}
               title={badge.description}
             >
               <span className="text-2xl mb-2">{badge.icon}</span>
