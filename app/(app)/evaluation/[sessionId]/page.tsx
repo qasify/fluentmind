@@ -73,9 +73,10 @@ export default function EvaluationPage({
 }) {
   const { sessionId } = use(params);
   const [activeDimension, setActiveDimension] = useState<Dimension>("clarity");
-  const { currentSession, addVocabWord } = useAppStore();
+  const { sessions, addVocabWord } = useAppStore();
 
-  const analysis: SessionAnalysis | null = currentSession?.analysis || null;
+  const session = sessions.find((s) => s.id === sessionId);
+  const analysis: SessionAnalysis | null = session?.analysis || null;
 
   if (!analysis) {
     return (
@@ -100,16 +101,16 @@ export default function EvaluationPage({
     <div className="page-container fade-in !max-w-4xl">
       {/* Overall Score */}
       <div className="text-center py-10 px-6 mb-8 bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.04)] rounded-3xl backdrop-blur-sm">
-        <ScoreCircle score={analysis.overall.score} />
+        <ScoreCircle score={analysis.overall?.score} />
         <p className="text-lg text-secondary max-w-2xl mx-auto mb-8 leading-relaxed">
-          {analysis.overall.summary}
+          {analysis.overall?.summary}
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
           <div className="px-5 py-3 rounded-xl bg-[rgba(16,185,129,0.08)] border border-[rgba(16,185,129,0.15)] text-success-400 font-medium text-sm flex items-center gap-2 max-w-md w-full sm:w-auto">
-            <span className="text-lg">✅</span> {analysis.overall.topStrength}
+            <span className="text-lg">✅</span> {analysis.overall?.topStrength}
           </div>
           <div className="px-5 py-3 rounded-xl bg-[rgba(245,158,11,0.08)] border border-[rgba(245,158,11,0.15)] text-warning-400 font-medium text-sm flex items-center gap-2 max-w-md w-full sm:w-auto">
-            <span className="text-lg">⚠️</span> {analysis.overall.topWeakness}
+            <span className="text-lg">⚠️</span> {analysis.overall?.topWeakness}
           </div>
         </div>
       </div>
@@ -122,11 +123,10 @@ export default function EvaluationPage({
           return (
             <button
               key={dim.key}
-              className={`flex flex-col items-center justify-center p-4 rounded-xl border transition-all duration-200 ${
-                isActive 
-                  ? "bg-primary-500/10 border-primary-500/30 scale-[1.02] shadow-[0_4px_12px_rgba(6,182,212,0.1)]" 
-                  : "bg-background-elevated border-[rgba(255,255,255,0.06)] hover:bg-[rgba(255,255,255,0.06)]"
-              }`}
+              className={`flex flex-col items-center justify-center p-4 rounded-xl border transition-all duration-200 ${isActive
+                ? "bg-primary-500/10 border-primary-500/30 scale-[1.02] shadow-[0_4px_12px_rgba(6,182,212,0.1)]"
+                : "bg-background-elevated border-[rgba(255,255,255,0.06)] hover:bg-[rgba(255,255,255,0.06)]"
+                }`}
               onClick={() => setActiveDimension(dim.key)}
             >
               <div className="text-2xl mb-2 grayscale opacity-80">{dim.icon}</div>
@@ -182,7 +182,7 @@ export default function EvaluationPage({
                     &quot;{item.context}&quot;
                   </span>
                 </div>
-                
+
                 <div className="grid gap-3 sm:grid-cols-2">
                   {item.suggestions.map((s, j) => (
                     <div key={j} className="flex flex-col p-4 bg-background-primary border border-[rgba(255,255,255,0.06)] rounded-xl group relative overflow-hidden">
@@ -190,8 +190,8 @@ export default function EvaluationPage({
                       <div className="flex justify-between items-start mb-2 relative z-10">
                         <div>
                           <div className="font-bold text-primary-400 mb-1 flex items-center gap-2">
-                             {s.word}
-                             <span className="text-[10px] uppercase tracking-wider text-tertiary border border-[rgba(255,255,255,0.1)] px-1.5 py-0.5 rounded">{s.register}</span>
+                            {s.word}
+                            <span className="text-[10px] uppercase tracking-wider text-tertiary border border-[rgba(255,255,255,0.1)] px-1.5 py-0.5 rounded">{s.register}</span>
                           </div>
                         </div>
                         <button
@@ -249,21 +249,20 @@ export default function EvaluationPage({
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
             <h4 className="heading-5 mb-4 text-primary-400">
               Framework: <span className="text-[#f0f0f5]">
-              {analysis.structure.frameworkDetected !== "none"
-                ? analysis.structure.frameworkDetected
-                : analysis.structure.suggestedFramework + " (Suggested)"}
+                {analysis.structure.frameworkDetected !== "none"
+                  ? analysis.structure.frameworkDetected
+                  : analysis.structure.suggestedFramework + " (Suggested)"}
               </span>
             </h4>
-            
+
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-6">
               {analysis.structure.frameworkAdherence.segments.map((seg, i) => (
                 <div
                   key={i}
-                  className={`flex items-center gap-3 p-4 rounded-xl border ${
-                    seg.present 
-                      ? "bg-[rgba(16,185,129,0.06)] border-[rgba(16,185,129,0.15)]" 
-                      : "bg-[rgba(244,63,94,0.04)] border-[rgba(244,63,94,0.1)] opacity-70"
-                  }`}
+                  className={`flex items-center gap-3 p-4 rounded-xl border ${seg.present
+                    ? "bg-[rgba(16,185,129,0.06)] border-[rgba(16,185,129,0.15)]"
+                    : "bg-[rgba(244,63,94,0.04)] border-[rgba(244,63,94,0.1)] opacity-70"
+                    }`}
                 >
                   <div className={`p-1.5 rounded-full ${seg.present ? "bg-success-400/20 text-success-400" : "bg-danger-400/20 text-danger-400"}`}>
                     {seg.present ? "✓" : "✗"}
@@ -272,12 +271,12 @@ export default function EvaluationPage({
                 </div>
               ))}
             </div>
-            
+
             {analysis.structure.frameworkAdherence.missingElements.length > 0 && (
               <div className="bg-[rgba(244,63,94,0.08)] text-danger-300 px-4 py-3 rounded-lg text-sm flex items-start gap-2">
-                <span className="mt-0.5">⚠️</span> 
+                <span className="mt-0.5">⚠️</span>
                 <div>
-                  <span className="font-semibold block mb-1">Missing Elements:</span> 
+                  <span className="font-semibold block mb-1">Missing Elements:</span>
                   {analysis.structure.frameworkAdherence.missingElements.join(", ")}
                 </div>
               </div>
@@ -323,7 +322,7 @@ export default function EvaluationPage({
                 </div>
               </div>
             )}
-            
+
             {analysis.confidence.hedgingPhrases.length > 0 && (
               <div className="bg-[rgba(244,63,94,0.05)] border border-[rgba(244,63,94,0.1)] rounded-xl p-5">
                 <h4 className="heading-5 text-danger-400 mb-4 flex items-center gap-2">
@@ -345,13 +344,39 @@ export default function EvaluationPage({
         )}
       </div>
 
+      {/* Audio Playback & Transcript */}
+      {session?.audioUrl ? (
+        <div className="bg-background-secondary border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 md:p-8 mb-8 shadow-xl">
+          <h3 className="heading-4 mb-4 flex items-center gap-3">
+            <span className="p-2 bg-background-elevated rounded-lg">▶️</span>
+            Listen Back
+          </h3>
+          <div className="w-full flex justify-center mb-6">
+            <audio src={session.audioUrl} controls className="w-full max-w-lg" />
+          </div>
+          <div className="text-secondary text-sm italic border-l-2 border-primary-500/50 pl-4 py-2">
+            &quot;{session.transcript}&quot;
+          </div>
+        </div>
+      ) : (
+        <div className="bg-background-secondary border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 md:p-8 mb-8 shadow-xl">
+          <h3 className="heading-4 mb-4 flex items-center gap-3">
+            <span className="p-2 bg-background-elevated rounded-lg">📜</span>
+            Transcript
+          </h3>
+          <div className="text-secondary text-sm italic border-l-2 border-primary-500/50 pl-4 py-2">
+            &quot;{session?.transcript || "No transcript available."}&quot;
+          </div>
+        </div>
+      )}
+
       {/* Actionable Tip */}
       <div className="bg-gradient-primary-soft border border-[rgba(6,182,212,0.2)] rounded-2xl p-6 md:p-8 mb-10 shadow-[0_0_30px_rgba(6,182,212,0.1)]">
         <div className="text-xs font-bold uppercase tracking-[0.1em] text-primary-400 mb-3 flex items-center gap-2">
           <span>💡</span> Your Next Action Step
         </div>
         <div className="text-xl md:text-2xl font-medium leading-snug text-[#f0f0f5]">
-          {analysis.overall.actionableTip}
+          {analysis.overall?.actionableTip}
         </div>
       </div>
 

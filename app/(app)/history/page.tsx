@@ -25,10 +25,12 @@ export default function HistoryPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {sessions.map((session) => {
+            const score = session.analysis?.overall?.score || 0;
             const scoreColor =
-              session.analysis.overall.score >= 80 ? "text-success-400"
-              : session.analysis.overall.score >= 60 ? "text-warning-400"
+              score >= 80 ? "text-success-400"
+              : score >= 60 ? "text-warning-400"
               : "text-danger-400";
+            const displayScore = score === 0 ? "..." : score;
 
             return (
               <Link
@@ -52,7 +54,7 @@ export default function HistoryPage() {
                 </div>
                 <div className="text-right shrink-0">
                   <div className={`text-2xl font-extrabold ${scoreColor}`}>
-                    {session.analysis.overall.score}
+                    {displayScore}
                   </div>
                   <div className="text-[10px] uppercase tracking-wider text-[#6b6b80]">Score</div>
                 </div>
