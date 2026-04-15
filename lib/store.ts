@@ -357,6 +357,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
             topic: s.topic,
             category: s.category,
             transcript: s.transcript,
+            audioUrl: s.audio_url,
             analysis: s.analysis,
             audioMetadata: s.audio_metadata,
             xpEarned: s.xp_earned,
