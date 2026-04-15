@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { motion, useScroll, useMotionValueEvent } from "framer-motion";
+import { motion, useScroll, useMotionValueEvent, type Variants } from "framer-motion";
 
 const features = [
   {
@@ -59,12 +59,12 @@ const steps = [
 ];
 
 // Reusable animation variants
-const fadeInUp = {
+const fadeInUp: Variants = {
   hidden: { opacity: 0, y: 30 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
 };
 
-const staggerContainer = {
+const staggerContainer: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
@@ -74,12 +74,23 @@ const staggerContainer = {
   },
 };
 
+
 export default function LandingPage() {
   const [hidden, setHidden] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   const { scrollY } = useScroll();
 
   useMotionValueEvent(scrollY, "change", (latest) => {
     const previous = scrollY.getPrevious() ?? 0;
+    
+    // Check if we passed the top threshold
+    if (latest > 50) {
+      setIsScrolled(true);
+    } else {
+      setIsScrolled(false);
+    }
+
+    // Hide/show logic
     if (latest > previous && latest > 100) {
       setHidden(true); // scrolling down
     } else {
@@ -97,7 +108,11 @@ export default function LandingPage() {
         }}
         animate={hidden ? "hidden" : "visible"}
         transition={{ duration: 0.35, ease: "easeInOut" }}
-        className="fixed top-0 left-0 right-0 z-[100] px-6 py-4 flex items-center justify-between bg-[rgba(10,10,15,0.7)] backdrop-blur-md border-b border-[rgba(255,255,255,0.06)]"
+        className={`fixed top-0 left-0 right-0 z-[100] px-6 py-4 flex items-center justify-between transition-colors duration-300 ${
+          isScrolled 
+            ? "bg-[rgba(10,10,15,0.7)] backdrop-blur-md border-b border-[rgba(255,255,255,0.06)]"
+            : "bg-transparent border-b border-transparent"
+        }`}
       >
         <Link href="/" className="flex items-center gap-2 text-lg font-bold text-[#f0f0f5]">
           <div className="w-8 h-8 rounded-md bg-gradient-primary flex items-center justify-center font-extrabold text-base text-white">F</div>
