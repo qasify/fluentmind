@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 const apiKey = process.env.GEMINI_API_KEY;
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
+const GEMINI_MODAL = process.env.GEMINI_MODAL;
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODAL}:generateContent`;
 
 export async function POST(request: Request) {
   try {
@@ -11,10 +12,10 @@ export async function POST(request: Request) {
     const userMessage = formData.get("userMessage") as string || "";
     const aiPersonality = (formData.get("aiPersonality") as string) || "encouraging_coach";
     let messageHistory: any[] = [];
-    
+
     try {
       messageHistory = JSON.parse((formData.get("messageHistory") as string) || "[]");
-    } catch {}
+    } catch { }
 
     const audioFile = formData.get("audio") as File | null;
 
