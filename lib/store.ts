@@ -2,12 +2,17 @@ import { create } from "zustand";
 import { createClient } from "@/lib/supabase/client";
 
 // ---- Types ----
+export interface RuleExample {
+  originalText: string;
+  suggestion: string;
+  date: string;
+}
+
 export interface UserMistake {
   id: string;
   errorType: "grammar" | "vocabulary" | "phrase" | "action_step";
-  originalText: string;
-  suggestion: string;
-  context: string;
+  rule: string;
+  examples: RuleExample[];
   status: "active" | "fixed";
   createdAt: string;
   fixedAt?: string;
@@ -87,10 +92,10 @@ export interface SessionAnalysis {
     nativeVersion: string;
     upgradedTranscript: string;
     newMistakesToTrack: Array<{
-      originalText: string;
-      suggestion: string;
+      rule: string;
       errorType: "grammar" | "vocabulary" | "phrase" | "action_step";
-      context: string;
+      exampleOriginal: string;
+      exampleSuggestion: string;
     }>;
     mistakesAvoided: string[]; // List of IDs the user successfully avoided this session
     mistakesRepeated: string[]; // List of IDs the user repeated this session
@@ -255,7 +260,7 @@ interface AppState {
   // Badges
   checkAndUnlockBadges: () => Promise<Badge[]>;
   // Mistakes
-  addMistakes: (mistakes: Omit<UserMistake, "id" | "createdAt" | "status" | "avoidanceCount">[]) => Promise<void>;
+  addMistakes: (mistakes: Array<{ rule: string; errorType: string; exampleOriginal: string; exampleSuggestion: string }>) => Promise<void>;
   markMistakesAvoided: (ids: string[]) => Promise<void>;
   markMistakesRepeated: (ids: string[]) => Promise<void>;
   // Conversations
@@ -490,9 +495,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
           mistakes: mData.map((m: any) => ({
             id: m.id,
             errorType: m.error_type,
-            originalText: m.original_text,
-            suggestion: m.suggestion,
-            context: m.context,
+            rule: m.rule,
+            examples: m.examples || [],
             status: m.status,
             avoidanceCount: m.avoidance_count,
             createdAt: m.created_at,
@@ -582,30 +586,67 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   addMistakes: async (mistakesData) => {
     const state = get();
-    const newMistakes: UserMistake[] = mistakesData.map((m, i) => ({
-      ...m,
-      id: `mistake-${Date.now()}-${i}`,
-      status: "active",
-      avoidanceCount: 0,
-      createdAt: new Date().toISOString()
-    }));
-
-    set({ mistakes: [...newMistakes, ...state.mistakes] });
-    
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
+
+    const updatedMistakes = [...state.mistakes];
+    const newDbInserts: any[] = [];
+    const newDbUpdates: any[] = [];
+
+    mistakesData.forEach((mData, i) => {
+      const existingIdx = updatedMistakes.findIndex(m => m.rule === mData.rule && m.status === 'active');
+      
+      const newExample = {
+        originalText: mData.exampleOriginal,
+        suggestion: mData.exampleSuggestion,
+        date: new Date().toISOString()
+      };
+
+      if (existingIdx !== -1) {
+        const existing = updatedMistakes[existingIdx];
+        const updated = {
+          ...existing,
+          examples: [newExample, ...(existing.examples || [])],
+          avoidanceCount: 0
+        };
+        updatedMistakes[existingIdx] = updated;
+        newDbUpdates.push(updated);
+      } else {
+        const brandNew: UserMistake = {
+          id: `mistake-${Date.now()}-${i}-${Math.random().toString(36).substring(7)}`,
+          errorType: mData.errorType as any,
+          rule: mData.rule,
+          examples: [newExample],
+          status: "active",
+          avoidanceCount: 0,
+          createdAt: new Date().toISOString()
+        };
+        updatedMistakes.unshift(brandNew);
+        newDbInserts.push(brandNew);
+      }
+    });
+
+    set({ mistakes: updatedMistakes });
+    
     if (user) {
-      await supabase.from('user_mistakes').insert(newMistakes.map(m => ({
-        id: m.id,
-        user_id: user.id,
-        error_type: m.errorType,
-        original_text: m.originalText,
-        suggestion: m.suggestion,
-        context: m.context,
-        status: m.status,
-        avoidance_count: 0,
-        created_at: m.createdAt
-      })));
+      if (newDbInserts.length > 0) {
+        await supabase.from('user_mistakes').insert(newDbInserts.map(m => ({
+          id: m.id,
+          user_id: user.id,
+          error_type: m.errorType,
+          rule: m.rule,
+          examples: m.examples,
+          status: m.status,
+          avoidance_count: m.avoidanceCount,
+          created_at: m.createdAt
+        })));
+      }
+      for (const update of newDbUpdates) {
+        await supabase.from('user_mistakes').update({
+          examples: update.examples,
+          avoidance_count: update.avoidanceCount
+        }).eq('id', update.id);
+      }
     }
   },
 

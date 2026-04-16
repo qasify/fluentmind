@@ -148,9 +148,9 @@ export default function VoiceConversationPage() {
         // Add to the global tracking ledger so the user can practice these later
         const newMistakes = data.corrections.map((c: any) => ({
           errorType: "phrase" as const,
-          originalText: c.original,
-          suggestion: c.suggestion,
-          context: c.rule || "From live conversation",
+          exampleOriginal: c.original,
+          exampleSuggestion: c.suggestion,
+          rule: c.rule || "General Conversation Error",
         }));
         await useAppStore.getState().addMistakes(newMistakes);
       }

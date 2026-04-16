@@ -348,8 +348,8 @@ function RecordContent() {
 
       if (activeMistakes.length > 0) {
         pastContext = `
-ACTIVE MISTAKES LEDGER (The user is actively working on these):
-${activeMistakes.map(m => `- ID: [${m.id}] | Type: ${m.errorType} | Original: "${m.originalText}" -> Suggestion: "${m.suggestion}"`).join("\n")}
+ACTIVE MISTAKES LEDGER (The user is actively working on these grammatical/vocabulary rules):
+${activeMistakes.map(m => `- ID: [${m.id}] | Rule: "${m.rule}" | Examples they've made: ${m.examples?.slice(0,2).map((e:any) => `'${e.originalText}'`).join(', ')}`).join("\n")}
 
 CRITICAL INSTRUCTIONS FOR YOU:
 1. Check if the user successfully fixed these specific mistakes or followed the action steps. If they DID improve, list the IDs of the fixed mistakes in 'mistakesFixed'.

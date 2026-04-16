@@ -239,10 +239,10 @@ Return STRICTLY this JSON structure (no markdown, no extra text):
       "upgradedTranscript": "<Take the speaker's EXACT story/content and rewrite it in fluent, natural C1-level English. Keep their ideas and narrative but upgrade the vocabulary, grammar, and flow to sound like a native speaker. Same story, better English.>",
       "newMistakesToTrack": [
         {
-          "originalText": "<exact text to fix>",
-          "suggestion": "<better way>",
-          "errorType": "<grammar|vocabulary|phrase|action_step>",
-          "context": "<context context here>"
+           "rule": "<The underlying principle violated, e.g. 'Subject-Verb Agreement (3rd Person Singular)' or 'Missing Definite Article'>",
+           "errorType": "<grammar|vocabulary|phrase|action_step>",
+           "exampleOriginal": "<exact text to fix>",
+           "exampleSuggestion": "<better way>"
         }
       ],
       "mistakesAvoided": ["<string: id of the mistake from ACTIVE MISTAKES LEDGER that the user successfully avoided or didn't make>"],

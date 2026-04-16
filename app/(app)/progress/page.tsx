@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useAppStore } from "@/lib/store";
 import { motion, type Variants } from "framer-motion";
@@ -19,6 +20,12 @@ export default function ProgressPage() {
     totalXp, currentLevel, currentLevelTitle, currentStreak, longestStreak,
     sessions, vocabularyBank, badges, profile, mistakes
   } = useAppStore();
+
+  const [expandedRules, setExpandedRules] = useState<Record<string, boolean>>({});
+
+  const toggleRule = (id: string) => {
+    setExpandedRules(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
   // Calculate averages from sessions
   const avgScore = sessions.length > 0
@@ -194,30 +201,57 @@ export default function ProgressPage() {
           </div>
           
           <div className="grid gap-3 lg:grid-cols-2">
-            {activeMistakes.map(mistake => (
-              <div key={mistake.id} className="p-4 bg-[rgba(244,63,94,0.03)] border border-[rgba(244,63,94,0.1)] rounded-xl relative overflow-hidden group">
-                <div className="absolute top-0 right-0 p-2 opacity-30 text-danger-400">⚠️</div>
-                <div className="text-[10px] uppercase font-bold text-danger-400 tracking-wider mb-2 flex items-center justify-between">
-                  <span>{mistake.errorType.replace("_", " ")}</span>
-                  <div className="flex gap-1 pr-6" title={`Avoided ${mistake.avoidanceCount || 0}/3 times to fix`}>
-                    {[1, 2, 3].map(step => (
-                      <div key={step} className={`w-3 h-1 rounded-full ${step <= (mistake.avoidanceCount || 0) ? "bg-success-400" : "bg-danger-400/20"}`} />
-                    ))}
+            {activeMistakes.map(mistake => {
+              const isExpanded = !!expandedRules[mistake.id];
+              return (
+                <div key={mistake.id} className="bg-[rgba(244,63,94,0.03)] border border-[rgba(244,63,94,0.1)] rounded-xl relative overflow-hidden group transition-all duration-300">
+                  <div 
+                    className="p-4 cursor-pointer flex flex-col hover:bg-[rgba(244,63,94,0.05)] transition-colors"
+                    onClick={() => toggleRule(mistake.id)}
+                  >
+                    <div className="absolute top-0 right-0 p-2 opacity-30 text-danger-400">⚠️</div>
+                    <div className="text-[10px] uppercase font-bold text-danger-400 tracking-wider mb-2 flex items-center justify-between">
+                      <span>{mistake.errorType.replace("_", " ")}</span>
+                      <div className="flex gap-1 pr-6" title={`Avoided ${mistake.avoidanceCount || 0}/3 times to fix`}>
+                        {[1, 2, 3].map(step => (
+                          <div key={step} className={`w-3 h-1 rounded-full ${step <= (mistake.avoidanceCount || 0) ? "bg-success-400" : "bg-danger-400/20"}`} />
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="font-medium text-[#f0f0f5]">
+                        <span className="text-[#a0a0b5] font-normal mr-2">Rule:</span>
+                        {mistake.rule}
+                      </div>
+                      <div className="text-xs text-[#6b6b80] whitespace-nowrap mt-1">
+                        {mistake.examples?.length || 0} examples {isExpanded ? "▲" : "▼"}
+                      </div>
+                    </div>
                   </div>
+                  
+                  {isExpanded && mistake.examples && mistake.examples.length > 0 && (
+                    <div className="px-4 pb-4 pt-1 border-t border-[rgba(244,63,94,0.05)] bg-[rgba(0,0,0,0.1)]">
+                      <h4 className="text-xs font-semibold text-[#8b8b9d] uppercase tracking-wider mb-3 mt-2">Captured Mistakes</h4>
+                      <div className="space-y-3">
+                        {mistake.examples.map((ex, idx) => (
+                          <div key={idx} className="flex flex-col gap-1 text-sm bg-background-tertiary p-3 rounded-lg border border-[rgba(255,255,255,0.02)]">
+                            <div>
+                              <span className="text-danger-400 mr-2 text-xs">Said:</span>
+                              <span className="line-through decoration-danger-400/50 text-[#c8c8d5]">{ex.originalText}</span>
+                            </div>
+                            <div>
+                              <span className="text-success-400 mr-2 text-xs">Better:</span>
+                              <span className="text-[#f0f0f5]">{ex.suggestion}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                
-                <div className="flex flex-col gap-2">
-                  <div className="text-sm">
-                    <span className="text-[#a0a0b5] mr-2">Rule/Mistake:</span>
-                    <span className="line-through decoration-danger-400/50 text-[#c8c8d5]">&quot;{mistake.originalText}&quot;</span>
-                  </div>
-                  <div className="text-sm font-medium">
-                    <span className="text-success-400 mr-2">How to Fix:</span>
-                    <span className="text-[#f0f0f5]">&quot;{mistake.suggestion}&quot;</span>
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
             
             {activeMistakes.length === 0 && fixedMistakes.length > 0 && (
               <div className="col-span-2 text-center py-6 text-success-400">

@@ -58,7 +58,7 @@ Respond in EXACTLY this JSON format (no markdown):
     {
       "original": "<the exact wrong words they used>",
       "suggestion": "<the correct or natural native way to say it>",
-      "rule": "<A short 1-sentence teacher explanation of *why* it's wrong>"
+      "rule": "<The grammatical or vocabulary rule violated, e.g. 'Subject-Verb Agreement (3rd Person Singular)'>"
     }
   ]
 }
