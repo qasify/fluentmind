@@ -19,7 +19,7 @@ const dimensions: { key: Dimension; icon: string; label: string }[] = [
 
 function HighlightedText({ text, activeChunk }: { text: string; activeChunk: string }) {
   if (!activeChunk || !text) return <>&quot;{text}&quot;</>;
-  
+
   const chunkIndex = text.indexOf(activeChunk);
   if (chunkIndex === -1) return <>&quot;{text}&quot;</>;
 
@@ -123,7 +123,7 @@ export default function EvaluationPage({
   const activeData = analysis[activeDimension];
 
   return (
-    <div className="page-container fade-in !max-w-4xl">
+    <div className="page-container fade-in">
       {/* Overall Score */}
       <div className="text-center py-10 px-6 mb-8 bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.04)] rounded-3xl backdrop-blur-sm">
         <ScoreCircle score={analysis.overall?.score} />
@@ -500,9 +500,9 @@ export default function EvaluationPage({
                 >
                   🔊
                 </button>
-                <HighlightedText 
-                  text={analysis.overall.upgradedTranscript} 
-                  activeChunk={isPlaying && currentText === analysis.overall.upgradedTranscript ? activeChunk : ""} 
+                <HighlightedText
+                  text={analysis.overall.upgradedTranscript}
+                  activeChunk={isPlaying && currentText === analysis.overall.upgradedTranscript ? activeChunk : ""}
                 />
               </div>
             )}
@@ -514,9 +514,9 @@ export default function EvaluationPage({
                 >
                   🔊
                 </button>
-                <HighlightedText 
-                  text={analysis.overall.nativeVersion} 
-                  activeChunk={isPlaying && currentText === analysis.overall.nativeVersion ? activeChunk : ""} 
+                <HighlightedText
+                  text={analysis.overall.nativeVersion}
+                  activeChunk={isPlaying && currentText === analysis.overall.nativeVersion ? activeChunk : ""}
                 />
               </div>
             )}
