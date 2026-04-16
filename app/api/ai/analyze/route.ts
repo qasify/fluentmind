@@ -14,6 +14,8 @@ export async function POST(request: NextRequest) {
     const wpm = Number(formData.get("wpm") || 0);
     const pauseCount = Number(formData.get("pauseCount") || 0);
     const pastContext = (formData.get("pastContext") as string) || "";
+    const eloRating = Number(formData.get("eloRating") || 1200);
+    const aiPersonality = (formData.get("aiPersonality") as string) || "encouraging_coach";
 
     if (!audioFile || audioFile.size < 1000) {
       return NextResponse.json(
@@ -26,7 +28,7 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await audioFile.arrayBuffer();
     const base64Audio = Buffer.from(arrayBuffer).toString("base64");
 
-    const prompt = buildAnalysisPrompt({ topic, category, framework, duration, wpm, pauseCount, pastContext });
+    const prompt = buildAnalysisPrompt({ topic, category, framework, duration, wpm, pauseCount, pastContext, eloRating, aiPersonality });
 
     if (!GEMINI_API_KEY) {
       // No API key — return mock data
@@ -118,6 +120,8 @@ function buildAnalysisPrompt(params: {
   wpm: number;
   pauseCount: number;
   pastContext: string;
+  eloRating: number;
+  aiPersonality: string;
 }) {
   return `You are FluentMind AI, a strict but encouraging IELTS / CEFR English speaking examiner and linguist.
 You will receive an audio recording of a speaker practicing English.
@@ -133,6 +137,8 @@ CATEGORY: ${params.category}
 SPEAKING DURATION: ${params.duration} seconds
 ESTIMATED WPM: ${params.wpm}
 PAUSE COUNT: ${params.pauseCount}
+ADAPTIVE ELO RATING: ${params.eloRating}
+AI COACH PERSONA: ${params.aiPersonality}
 
 PAST CONTEXT & ERRORS TO TRACK:
 ${params.pastContext ? params.pastContext : "First session or no outstanding errors tracked yet."}
@@ -143,6 +149,11 @@ STRICT SCORING GUIDELINES (follow these or the scores are worthless):
 - 60-74: Developing. Noticeable errors, basic vocabulary, incomplete structure. This is where most intermediate learners land.
 - 40-59: Weak. Frequent errors, very basic vocabulary, poor structure, doesn't fully address the topic.
 - 0-39: Very weak. Barely comprehensible, fails to address the topic.
+
+ADAPTIVE DIFFICULTY RULE:
+- If ELO is low (<1000), prioritize foundational corrections and simple tactical advice.
+- If ELO is mid (1000-1400), use moderate complexity and push structured responses.
+- If ELO is high (>1400), demand high precision and nuanced vocabulary.
 
 SCORING FACTORS (Evaluate strictly according to IELTS Speaking band descriptors weighting these 4 areas equally):
 - TASK FULFILLMENT & TOPIC DEVELOPMENT: Did the speaker fully address the prompt? If the prompt requires a detailed description (like IELTS Part 2) and they only give a one-sentence answer, score them VERY LOW (Band 3-4 max) because they failed to develop the topic. Short answers are only acceptable if they fully and naturally answer a simple, direct question.

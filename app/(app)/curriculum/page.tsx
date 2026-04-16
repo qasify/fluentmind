@@ -16,7 +16,7 @@ const stagger: Variants = {
 };
 
 export default function CurriculumPage() {
-  const { activeCurriculum, profile, mistakes, sessions, generateCurriculum, markTaskCompleted } = useAppStore();
+  const { activeCurriculum, profile, mistakes, sessions, eloRating, generateCurriculum, markTaskCompleted } = useAppStore();
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +30,7 @@ export default function CurriculumPage() {
       const res = await fetch("/api/ai/curriculum", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile, activeMistakes, recentSessions }),
+        body: JSON.stringify({ profile, activeMistakes, recentSessions, eloRating }),
       });
 
       const json = await res.json();
@@ -56,17 +56,36 @@ export default function CurriculumPage() {
       case "conversation": return "💬";
       case "vocabulary": return "🔤";
       case "grammar": return "✅";
+      case "writing": return "✍️";
       case "homework": return "📝";
       default: return "📝";
     }
   };
 
   const getTaskLink = (task: any) => {
-    if (task.type === "speaking") return `/practice/record?topic=${encodeURIComponent(task.targetFocus || task.title)}`;
-    if (task.type === "conversation") return `/practice/conversation?topic=${encodeURIComponent(task.targetFocus || task.title)}`;
-    if (task.type === "vocabulary") return `/vocabulary/review`;
-    if (task.type === "assessment") return `/curriculum/assessment`;
-    return `/practice/record`;
+    const fullPrompt = `${task.title}. ${task.description || ""}`.trim();
+    const params = new URLSearchParams({
+      title: task.title || "Practice Task",
+      prompt: fullPrompt,
+      focus: task.targetFocus || "",
+      day: String(task.dayNumber || ""),
+    });
+    const text = `${task.title || ""} ${task.description || ""} ${task.targetFocus || ""}`.toLowerCase();
+
+    // Heuristic fallback: AI can label type wrong. Route by instruction language.
+    const soundsLikeSpeaking = /\b(record|speaking|speak|say|debate|talk|describe aloud|voice|minute recording)\b/.test(text);
+    const soundsLikeWriting = /\b(write|essay|email|paragraph|sentences|grammar drill|written)\b/.test(text);
+    const soundsLikeQuiz = /\b(quiz|review|flashcard|fsrs|multiple choice|mcq|due words|spaced repetition)\b/.test(text);
+
+    if (task.type === "assessment") return "/curriculum/assessment";
+    if (task.type === "vocabulary") {
+      if (soundsLikeSpeaking) return `/practice/record?${params.toString()}&category=Curriculum`;
+      return soundsLikeQuiz ? "/vocabulary/review" : `/practice/record?${params.toString()}&category=Curriculum`;
+    }
+    if (task.type === "conversation") return `/practice/conversation?topic=${encodeURIComponent(fullPrompt)}`;
+    if (task.type === "writing" || task.type === "grammar" || soundsLikeWriting) return `/practice/write?${params.toString()}`;
+    if (task.type === "speaking" || soundsLikeSpeaking) return `/practice/record?${params.toString()}&category=Curriculum`;
+    return `/practice/write?${params.toString()}`;
   };
 
   if (!activeCurriculum) {

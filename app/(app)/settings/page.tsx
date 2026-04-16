@@ -101,24 +101,30 @@ export default function SettingsPage() {
             <option value="advanced">Advanced (C1-C2)</option>
           </select>
         </div>
+        <div className="input-wrapper mt-4">
+          <label className="input-label">AI Coach Persona</label>
+          <select
+            className="input"
+            value={profile.aiPersonality}
+            onChange={(e) => setProfile({ aiPersonality: e.target.value as typeof profile.aiPersonality })}
+          >
+            <option value="encouraging_coach">Encouraging Coach (Friendly & Supportive)</option>
+            <option value="strict_examiner">Strict IELTS Examiner (Brutal & Formal)</option>
+            <option value="casual_friend">Casual Friend (Slang & Relaxed)</option>
+            <option value="socratic_tutor">Socratic Tutor (Asks questions to make you think)</option>
+          </select>
+          <p className="text-xs text-[#6b6b80] mt-2">This fundamentally changes how the AI speaks to you and grades your grammar.</p>
+        </div>
       </div>
 
       <div className="card p-6">
         <h3 className="heading-5 mb-6">Data</h3>
         <p className="text-sm text-[#a0a0b5] mb-4">
-          All your data is stored locally in your browser. Clearing browser data will erase your progress.
+          Your profile, progress, curriculum, and mistakes are synced to Supabase for this account.
         </p>
-        <button
-          className="btn btn-danger"
-          onClick={() => {
-            if (confirm("Are you sure? This will erase ALL your progress, sessions, and vocabulary.")) {
-              localStorage.removeItem("fluentmind-store");
-              window.location.reload();
-            }
-          }}
-        >
-          🗑️ Reset All Data
-        </button>
+        <p className="text-xs text-[#6b6b80]">
+          For full account reset, use a backend admin action or contact support to clear account data safely.
+        </p>
       </div>
     </div>
   );

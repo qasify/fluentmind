@@ -106,7 +106,7 @@ export interface CurriculumTask {
   id: string;
   dayNumber: number; // 1 to 7
   title: string;
-  type: "assessment" | "speaking" | "conversation" | "vocabulary" | "grammar" | "homework";
+  type: "assessment" | "speaking" | "conversation" | "vocabulary" | "grammar" | "writing" | "homework";
   description: string;
   targetFocus?: string;
   isCompleted: boolean;
@@ -203,6 +203,7 @@ export interface UserProfile {
   nativeLanguage: string;
   dailyGoalMinutes: number;
   onboardingComplete: boolean;
+  aiPersonality: "encouraging_coach" | "strict_examiner" | "casual_friend" | "socratic_tutor";
 }
 
 // Badge system
@@ -249,6 +250,7 @@ interface AppState {
   longestStreak: number;
   lastPracticeDate: string | null;
   streakFreezesAvailable: number;
+  eloRating: number;
 
   // Sessions
   sessions: Session[];
@@ -382,6 +384,12 @@ function isMissingCurriculumsTable(error: unknown): boolean {
     || JSON.stringify(error).includes("user_curriculums");
 }
 
+function computeNextEloRating(currentElo: number, sessionScore: number): number {
+  const centeredScore = sessionScore - 60;
+  const delta = Math.max(-20, Math.min(25, Math.round(centeredScore / 4)));
+  return Math.max(800, Math.min(2200, currentElo + delta));
+}
+
 export const useAppStore = create<AppState>()((set, get) => ({
   isHydrated: false,
   profile: {
@@ -391,6 +399,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
     nativeLanguage: "",
     dailyGoalMinutes: 5,
     onboardingComplete: false,
+    aiPersonality: "encouraging_coach",
   },
   totalXp: 0,
   currentLevel: 1,
@@ -399,6 +408,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   longestStreak: 0,
   lastPracticeDate: null,
   streakFreezesAvailable: 0,
+  eloRating: 1200,
   sessions: [],
   currentSession: null,
   vocabularyBank: [],
@@ -463,24 +473,29 @@ export const useAppStore = create<AppState>()((set, get) => ({
             nativeLanguage: pData.native_language,
             dailyGoalMinutes: pData.daily_goal_minutes,
             onboardingComplete: pData.onboarding_complete,
+            aiPersonality: pData.ai_personality || "encouraging_coach",
           }
         });
       }
 
       if (upData) {
         // Merge fetched badges with ALL_BADGES so UI always shows complete list
-        const fetchedBadges = Array.isArray(upData.badges) ? upData.badges : [];
-        const badgesMap = new Map(fetchedBadges.map((b: any) => [b.id, b]));
-        const mergedBadges = ALL_BADGES.map(b => (badgesMap.has(b.id) ? badgesMap.get(b.id) : { ...b })) as Badge[];
+        const fetchedBadges = Array.isArray(upData.badges) ? upData.badges as Array<{ id: string; unlockedAt: string | null }> : [];
+        const badgesMap = new Map<string, { id: string; unlockedAt: string | null }>(fetchedBadges.map((b) => [b.id, b]));
+        const mergedBadges = ALL_BADGES.map(defaultBadge => {
+          const fb = badgesMap.get(defaultBadge.id);
+          return fb ? { ...defaultBadge, unlockedAt: fb.unlockedAt } : defaultBadge;
+        });
         
         set({
           totalXp: upData.total_xp,
           currentLevel: upData.current_level,
-          currentLevelTitle: upData.current_level_title,
+          currentLevelTitle: LEVELS.find(l => upData.total_xp >= l.xp)?.title || LEVELS[0].title,
           currentStreak: upData.current_streak,
           longestStreak: upData.longest_streak,
           lastPracticeDate: upData.last_practice_date,
           streakFreezesAvailable: upData.streak_freezes_available,
+          eloRating: upData.elo_rating || 1200,
           badges: mergedBadges,
         });
       }
@@ -593,22 +608,23 @@ export const useAppStore = create<AppState>()((set, get) => ({
     }
   },
 
-  setProfile: async (partial) => {
-    const state = get();
-    const newProfile = { ...state.profile, ...partial };
-    set({ profile: newProfile });
-
+  setProfile: async (updates) => {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
+    
+    set((state) => ({ profile: { ...state.profile, ...updates } }));
+
     if (user) {
-      await supabase.from('profiles').update({
-        display_name: newProfile.displayName,
-        goal: newProfile.goal,
-        current_level: newProfile.currentLevel,
-        native_language: newProfile.nativeLanguage,
-        daily_goal_minutes: newProfile.dailyGoalMinutes,
-        onboarding_complete: newProfile.onboardingComplete
-      }).eq('id', user.id);
+      const dbUpdates: any = {};
+      if (updates.displayName !== undefined) dbUpdates.display_name = updates.displayName;
+      if (updates.goal !== undefined) dbUpdates.goal = updates.goal;
+      if (updates.currentLevel !== undefined) dbUpdates.current_level = updates.currentLevel;
+      if (updates.nativeLanguage !== undefined) dbUpdates.native_language = updates.nativeLanguage;
+      if (updates.dailyGoalMinutes !== undefined) dbUpdates.daily_goal_minutes = updates.dailyGoalMinutes;
+      if (updates.onboardingComplete !== undefined) dbUpdates.onboarding_complete = updates.onboardingComplete;
+      if (updates.aiPersonality !== undefined) dbUpdates.ai_personality = updates.aiPersonality;
+
+      await supabase.from('profiles').update(dbUpdates).eq('id', user.id);
     }
   },
 
@@ -619,9 +635,13 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
   addSession: async (session) => {
     const state = get();
+    const sessionScore = session.analysis?.overall?.score || 0;
+    const nextEloRating = computeNextEloRating(state.eloRating, sessionScore);
+
     set({
       sessions: [session, ...state.sessions],
       currentSession: session,
+      eloRating: nextEloRating,
     });
     
     const supabase = createClient();
@@ -640,6 +660,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
         xp_earned: session.xpEarned,
         created_at: session.createdAt
       });
+
+      await supabase
+        .from('user_progress')
+        .update({ elo_rating: nextEloRating })
+        .eq('id', user.id);
     }
   },
 

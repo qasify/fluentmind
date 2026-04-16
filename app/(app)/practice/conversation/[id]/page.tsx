@@ -2,13 +2,13 @@
 
 import { useAppStore } from "@/lib/store";
 import { useParams, useRouter } from "next/navigation";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useTTS } from "@/hooks/useTTS";
 
 export default function VoiceConversationPage() {
   const { id } = useParams() as { id: string };
   const router = useRouter();
-  const { conversations, activeConversation, setActiveConversation, addConversationMessage, endConversation } = useAppStore();
+  const { conversations, activeConversation, setActiveConversation, addConversationMessage, endConversation, profile } = useAppStore();
   const { speak, isPlaying, stop } = useTTS();
 
   const [isRecording, setIsRecording] = useState(false);
@@ -29,6 +29,60 @@ export default function VoiceConversationPage() {
     }
   }, [id, activeConversation, setActiveConversation]);
 
+  const executeAiTurn = useCallback(async (userMessageText: string | null = null, audioBlob: Blob | null = null) => {
+    if (!activeConversation) return;
+    setIsAiThinking(true);
+
+    try {
+      const history = activeConversation.messages.slice(-5); // Send last 5 for context
+
+      const formData = new FormData();
+      formData.append("scenarioId", activeConversation.scenarioId);
+      formData.append("scenarioTitle", activeConversation.scenarioTitle);
+      formData.append("messageHistory", JSON.stringify(history));
+      formData.append("aiPersonality", profile.aiPersonality);
+      if (userMessageText) formData.append("userMessage", userMessageText);
+      if (audioBlob) formData.append("audio", audioBlob, "recording.webm");
+
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        body: formData
+      });
+
+      if (!res.ok) throw new Error("API Failed");
+      const data = await res.json();
+
+      if (data.transcript && !data.transcript.startsWith("[SYSTEM")) {
+        await addConversationMessage(activeConversation.id, "user", data.transcript, undefined, data.corrections || []);
+      } else if (userMessageText && !userMessageText.startsWith("[SYSTEM")) {
+        await addConversationMessage(activeConversation.id, "user", userMessageText, undefined, data.corrections || []);
+      }
+
+      if (data.corrections && data.corrections.length > 0) {
+        // Add to the global tracking ledger so the user can practice these later
+        const newMistakes = data.corrections.map((c: any) => ({
+          errorType: "phrase" as const,
+          exampleOriginal: c.original,
+          exampleSuggestion: c.suggestion,
+          rule: c.rule || "General Conversation Error",
+        }));
+        await useAppStore.getState().addMistakes(newMistakes);
+      }
+
+      if (data.dialogue) {
+        await addConversationMessage(activeConversation.id, "ai", data.dialogue);
+        speak(data.dialogue);
+      }
+
+    } catch (e) {
+      console.error(e);
+      await addConversationMessage(activeConversation.id, "system", "Error connecting to AI. Please try again.");
+    } finally {
+      setInterimTranscript("");
+      setIsAiThinking(false);
+    }
+  }, [activeConversation, addConversationMessage, speak, profile.aiPersonality]);
+
   useEffect(() => {
     // Auto-initiate conversation if empty
     if (activeConversation && activeConversation.id === id) {
@@ -37,7 +91,7 @@ export default function VoiceConversationPage() {
         executeAiTurn("[SYSTEM: Kick off the conversation. You speak first! Keep it to 1-2 natural sentences representing the start of this roleplay.]");
       }
     }
-  }, [activeConversation, id, isAiThinking]);
+  }, [activeConversation, id, isAiThinking, executeAiTurn]);
 
   useEffect(() => {
     // Scroll to bottom on new messages
@@ -113,60 +167,6 @@ export default function VoiceConversationPage() {
       recognitionRef.current = null;
     }
     setIsRecording(false);
-  };
-
-  const executeAiTurn = async (userMessageText: string | null = null, audioBlob: Blob | null = null) => {
-    if (!activeConversation) return;
-    setIsAiThinking(true);
-
-    try {
-      const history = activeConversation.messages.slice(-5); // Send last 5 for context
-
-      const formData = new FormData();
-      formData.append("scenarioId", activeConversation.scenarioId);
-      formData.append("scenarioTitle", activeConversation.scenarioTitle);
-      formData.append("messageHistory", JSON.stringify(history));
-      if (userMessageText) formData.append("userMessage", userMessageText);
-      if (audioBlob) formData.append("audio", audioBlob, "recording.webm");
-
-      const res = await fetch("/api/ai/chat", {
-        method: "POST",
-        body: formData
-      });
-
-      if (!res.ok) throw new Error("API Failed");
-      const data = await res.json();
-
-      let userMsgId = null;
-      if (data.transcript && !data.transcript.startsWith("[SYSTEM")) {
-        userMsgId = await addConversationMessage(activeConversation.id, "user", data.transcript, undefined, data.corrections || []);
-      } else if (userMessageText && !userMessageText.startsWith("[SYSTEM")) {
-        userMsgId = await addConversationMessage(activeConversation.id, "user", userMessageText, undefined, data.corrections || []);
-      }
-
-      if (data.corrections && data.corrections.length > 0) {
-        // Add to the global tracking ledger so the user can practice these later
-        const newMistakes = data.corrections.map((c: any) => ({
-          errorType: "phrase" as const,
-          exampleOriginal: c.original,
-          exampleSuggestion: c.suggestion,
-          rule: c.rule || "General Conversation Error",
-        }));
-        await useAppStore.getState().addMistakes(newMistakes);
-      }
-
-      if (data.dialogue) {
-        await addConversationMessage(activeConversation.id, "ai", data.dialogue);
-        speak(data.dialogue);
-      }
-
-    } catch (e) {
-      console.error(e);
-      await addConversationMessage(activeConversation.id, "system", "Error connecting to AI. Please try again.");
-    } finally {
-      setInterimTranscript("");
-      setIsAiThinking(false);
-    }
   };
 
   const handleEndConversation = async () => {

@@ -9,6 +9,7 @@ export async function POST(request: Request) {
     const scenarioId = formData.get("scenarioId") as string || "";
     const scenarioTitle = formData.get("scenarioTitle") as string || "";
     const userMessage = formData.get("userMessage") as string || "";
+    const aiPersonality = (formData.get("aiPersonality") as string) || "encouraging_coach";
     let messageHistory: any[] = [];
     
     try {
@@ -37,8 +38,18 @@ export async function POST(request: Request) {
 
     const formatHistory = messageHistory.map((m: any) => `${m.role.toUpperCase()}: ${m.text}`).join("\n");
 
+    const personaInstruction = aiPersonality === "strict_examiner"
+      ? "You are formal, direct, and challenging like an IELTS examiner. Ask probing follow-up questions."
+      : aiPersonality === "casual_friend"
+        ? "You are warm, relaxed, and conversational. Use simple natural phrasing and occasional light humor."
+        : aiPersonality === "socratic_tutor"
+          ? "You teach by asking layered questions that make the learner reason and elaborate."
+          : "You are encouraging, constructive, and supportive while still correcting mistakes.";
+
     const prompt = `You are a conversational AI partner acting in a roleplay. 
 SCENARIO: ${scenarioTitle} (${scenarioId})
+PERSONA STYLE: ${aiPersonality}
+PERSONA INSTRUCTION: ${personaInstruction}
 
 You have three jobs:
 1. ${base64Audio ? "TRANSCRIBE the provided audio file exactly" : "Acknowledge the system message"}. 

@@ -444,18 +444,20 @@ export default function EvaluationPage({
       </div>
 
       {/* Audio Playback & Transcript */}
-      {session?.audioUrl ? (
+      {session ? (
         <div className="bg-background-secondary border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 md:p-8 mb-8 shadow-xl">
-          <h3 className="heading-4 mb-4 flex items-center gap-3">
-            <span className="p-2 bg-background-elevated rounded-lg">🎤</span>
-            Transcription & Playback
+          <h3 className="heading-4 flex items-center gap-3 mb-4">
+            <span className="p-2 bg-background-elevated rounded-lg">{session.audioUrl ? "🎤" : "📝"}</span>
+            {session.audioUrl ? "Transcription & Playback" : "Original Text & Analysis"}
           </h3>
-          <div className="w-full mb-6">
-            <AudioPlayer
-              src={session.audioUrl}
-              durationOverride={session.audioMetadata?.totalDurationSeconds || 0}
-            />
-          </div>
+          {session.audioUrl && (
+            <div className="w-full mb-6 mt-4">
+              <AudioPlayer
+                src={session.audioUrl!}
+                durationOverride={session.audioMetadata?.totalDurationSeconds || 0}
+              />
+            </div>
+          )}
 
           <div className="flex bg-[rgba(255,255,255,0.06)] p-1 rounded-xl w-fit mb-4 overflow-x-auto max-w-full">
             <button
@@ -525,7 +527,7 @@ export default function EvaluationPage({
             Transcript
           </h3>
           <div className="text-secondary text-sm italic border-l-2 border-primary-500/50 pl-4 py-2">
-            &quot;{session?.transcript || "No transcript available."}&quot;
+            &quot;No transcript available.&quot;
           </div>
         </div>
       )}

@@ -82,7 +82,7 @@ const TOPIC_CATEGORIES = [
 function RecordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { addSession, addXp, updateStreak, checkAndUnlockBadges, sessions, mistakes, addMistakes, markMistakesAvoided, markMistakesRepeated } = useAppStore();
+  const { addSession, addXp, updateStreak, checkAndUnlockBadges, sessions, mistakes, addMistakes, markMistakesAvoided, markMistakesRepeated, eloRating, profile } = useAppStore();
 
   // Topic picker state
   const [showTopicPicker, setShowTopicPicker] = useState(false);
@@ -91,6 +91,8 @@ function RecordContent() {
   const [state, setState] = useState<RecordingState>("idle");
   const [topic, setTopic] = useState("Describe your ideal weekend");
   const [category, setCategory] = useState("Daily Life");
+  const [taskTitle, setTaskTitle] = useState<string>("");
+  const [focusPoint, setFocusPoint] = useState<string>("");
 
   // Timer state
   const [timerDisplay, setTimerDisplay] = useState("00:00");
@@ -123,10 +125,14 @@ function RecordContent() {
 
   // Load topic from URL params
   useEffect(() => {
-    const urlTopic = searchParams.get("topic");
+    const urlTopic = searchParams.get("topic") || searchParams.get("prompt");
+    const urlTitle = searchParams.get("title");
     const urlCategory = searchParams.get("category");
+    const urlFocus = searchParams.get("focus");
     if (urlTopic) setTopic(decodeURIComponent(urlTopic));
+    if (urlTitle) setTaskTitle(decodeURIComponent(urlTitle));
     if (urlCategory) setCategory(decodeURIComponent(urlCategory));
+    if (urlFocus) setFocusPoint(decodeURIComponent(urlFocus));
   }, [searchParams]);
 
   // Cleanup on unmount
@@ -366,6 +372,8 @@ CRITICAL INSTRUCTIONS FOR YOU:
       formData.append("wpm", String(Math.round(wpm)));
       formData.append("pauseCount", String(pauseCount));
       formData.append("pastContext", pastContext);
+      formData.append("eloRating", String(eloRating));
+      formData.append("aiPersonality", profile.aiPersonality);
 
       const response = await fetch("/api/ai/analyze", {
         method: "POST",
@@ -532,13 +540,34 @@ CRITICAL INSTRUCTIONS FOR YOU:
 
       <div className="flex-1 flex flex-col items-center justify-center max-w-3xl mx-auto w-full">
         {/* Topic Card */}
-        <div className={`w-full text-center transition-all duration-500 mb-6 ${state === "recording" ? "scale-105" : ""}`}>
+        <div className={`w-full transition-all duration-500 mb-6 ${state === "recording" ? "scale-105" : ""}`}>
           <div className="inline-block px-3 py-1 bg-background-elevated border border-[rgba(255,255,255,0.06)] rounded-full text-xs font-semibold uppercase tracking-widest text-primary-400 mb-2">
             {category}
           </div>
-          <h2 className="text-3xl md:text-5xl font-bold leading-tight mb-2">
-            {topic}
-          </h2>
+          {taskTitle ? (
+            <div className="bg-background-secondary border border-[rgba(255,255,255,0.08)] rounded-2xl p-4 md:p-5 text-left">
+              <h3 className="text-xl md:text-2xl font-bold text-[#f0f0f5] mb-2 leading-tight">{taskTitle}</h3>
+              <p className="text-base md:text-lg text-[#c8c8d5] leading-relaxed max-h-28 md:max-h-36 overflow-y-auto pr-1">
+                {topic}
+              </p>
+              {focusPoint && (
+                <p className="text-xs text-[#8b8b9d] mt-3 font-mono">
+                  Focus: <span className="text-primary-300">{focusPoint}</span>
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="text-center">
+              <h2 className="text-3xl md:text-5xl font-bold leading-tight mb-2">
+                {topic}
+              </h2>
+              {focusPoint && (
+                <p className="text-sm text-[#8b8b9d] mt-2 font-mono">
+                  Focus: <span className="text-primary-300">{focusPoint}</span>
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Live Transcript / Empty state */}

@@ -44,19 +44,19 @@
 - [x] Conversation message storage
 - [x] Debate mode variant (merged into conversation engine)
 
-## Phase 5: Curriculum & Intelligence ❌ (0% — Placeholder pages only)
-- [ ] Onboarding speaking assessment
-- [ ] Weekly lesson plan generation (Gemini)
-- [ ] Lesson plan UI (weekly view, task cards)
-- [ ] Homework system (generation, submission, grading)
-- [ ] Error pattern tracking across sessions
-- [ ] Adaptive difficulty engine
-- [ ] AI personality settings
+## Phase 5: Curriculum & Intelligence ✅ (100% done)
+- [x] Onboarding speaking assessment
+- [x] Weekly lesson plan generation (Gemini)
+- [x] Lesson plan UI (weekly view, task cards)
+- [x] Homework system (generation, submission, grading)
+- [x] Error pattern tracking across sessions
+- [x] Adaptive difficulty engine
+- [x] AI personality settings
 
-## Phase 6: Exam & Dashboard ⚠️ (~30% — Placeholder pages + partial pages)
+## Phase 6: Exam & Dashboard ⚠️ (~40% — Partial pages built)
 - [ ] IELTS simulation (Part 1, 2, 3)
 - [ ] IELTS band scoring
-- [ ] CEFR assessment page
+- [ ] CEFR assessment page (detailed full test beyond baseline)
 - [x] Historical dashboard (session archive page built)
 - [ ] Growth charts (multi-metric, filler trend, vocab growth)
 - [ ] Weekly AI insight reports
@@ -78,9 +78,9 @@
 | Phase 1: Foundation | ✅ Done | 100% |
 | Phase 2: Core Recording | ✅ Done | 100% |
 | Phase 3: Vocab & Progress | ✅ Done | 100% |
-| Phase 4: Conversation | ❌ Not Started | 0% |
-| Phase 5: Curriculum | ❌ Not Started | 0% |
-| Phase 6: Exam & Dashboard | ⚠️ Partial | ~30% |
+| Phase 4: Conversation | ✅ Done | 100% |
+| Phase 5: Curriculum | ✅ Done | 100% |
+| Phase 6: Exam & Dashboard | ⚠️ Partial | ~40% |
 | Phase 7: Polish | ❌ Not Started | 0% |
 
 ### Latest Updates:
