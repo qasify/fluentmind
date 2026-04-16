@@ -17,6 +17,25 @@ const dimensions: { key: Dimension; icon: string; label: string }[] = [
   { key: "confidence", icon: "💪", label: "Confidence" },
 ];
 
+function HighlightedText({ text, activeChunk }: { text: string; activeChunk: string }) {
+  if (!activeChunk || !text) return <>&quot;{text}&quot;</>;
+  
+  const chunkIndex = text.indexOf(activeChunk);
+  if (chunkIndex === -1) return <>&quot;{text}&quot;</>;
+
+  const before = text.substring(0, chunkIndex);
+  const highlighted = text.substring(chunkIndex, chunkIndex + activeChunk.length);
+  const after = text.substring(chunkIndex + activeChunk.length);
+
+  return (
+    <>
+      &quot;{before}
+      <span className="bg-primary-500/25 text-[#f0f0f5] shadow-[0_0_15px_rgba(139,92,246,0.2)] rounded-md px-1 py-0.5 mx-[-4px] transition-colors duration-200">{highlighted}</span>
+      {after}&quot;
+    </>
+  );
+}
+
 function ScoreCircle({ score, size = 160 }: { score: number; size?: number }) {
   const strokeWidth = 8;
   const radius = (size - strokeWidth) / 2;
@@ -79,7 +98,7 @@ export default function EvaluationPage({
   const [activeTab, setActiveTab] = useState<"transcript" | "c1" | "native">("transcript");
   const [addedWords, setAddedWords] = useState<Set<string>>(new Set());
   const { sessions, addVocabWord, vocabularyBank } = useAppStore();
-  const { speak, isPlaying, currentText } = useTTS();
+  const { speak, isPlaying, currentText, activeChunk } = useTTS();
 
   const session = sessions.find((s) => s.id === sessionId);
   const analysis: SessionAnalysis | null = session?.analysis || null;
@@ -273,7 +292,9 @@ export default function EvaluationPage({
                       <span>Better phrasing:</span>
                       <button onClick={() => speak(item.suggestion)} className={`hover:scale-110 transition-transform ${isPlaying && currentText === item.suggestion ? "text-primary-400" : ""}`}>🔊</button>
                     </div>
-                    <div className="text-sm font-medium text-[#f0f0f5]">&quot;{item.suggestion}&quot;</div>
+                    <div className="text-sm font-medium text-[#f0f0f5]">
+                      <HighlightedText text={item.suggestion} activeChunk={isPlaying && currentText === item.suggestion ? activeChunk : ""} />
+                    </div>
                   </div>
                 </div>
                 <div className="text-sm text-[#a0a0b5] border-t border-[rgba(255,255,255,0.04)] pt-3">
@@ -475,7 +496,10 @@ export default function EvaluationPage({
                 >
                   🔊
                 </button>
-                &quot;{analysis.overall.upgradedTranscript}&quot;
+                <HighlightedText 
+                  text={analysis.overall.upgradedTranscript} 
+                  activeChunk={isPlaying && currentText === analysis.overall.upgradedTranscript ? activeChunk : ""} 
+                />
               </div>
             )}
             {activeTab === "native" && analysis.overall?.nativeVersion && (
@@ -486,7 +510,10 @@ export default function EvaluationPage({
                 >
                   🔊
                 </button>
-                &quot;{analysis.overall.nativeVersion}&quot;
+                <HighlightedText 
+                  text={analysis.overall.nativeVersion} 
+                  activeChunk={isPlaying && currentText === analysis.overall.nativeVersion ? activeChunk : ""} 
+                />
               </div>
             )}
           </div>

@@ -144,13 +144,11 @@ STRICT SCORING GUIDELINES (follow these or the scores are worthless):
 - 40-59: Weak. Frequent errors, very basic vocabulary, poor structure, doesn't fully address the topic.
 - 0-39: Very weak. Barely comprehensible, fails to address the topic.
 
-SCORING FACTORS (weight these heavily):
-- Did the speaker FULLY ADDRESS the topic? A one-sentence answer to a question that expects a paragraph = max 40 overall.
-- DEPTH and DETAIL: Did they provide reasons, examples, and elaboration?   
-- RELEVANCE: Was the response directly about the topic or did they go off-track?
-- LENGTH: For a 2-minute response, expect 200-300 words. Significantly less = penalty.
-- GRAMMAR ACCURACY: Count actual errors. More than 3 notable errors = max 70 grammar score.
-- VOCABULARY RANGE: Using only basic A2/B1 words throughout = max 55 vocab score.
+SCORING FACTORS (Evaluate strictly according to IELTS Speaking band descriptors weighting these 4 areas equally):
+- TASK FULFILLMENT & TOPIC DEVELOPMENT: Did the speaker fully address the prompt? If the prompt requires a detailed description (like IELTS Part 2) and they only give a one-sentence answer, score them VERY LOW (Band 3-4 max) because they failed to develop the topic. Short answers are only acceptable if they fully and naturally answer a simple, direct question.
+- FLUENCY & COHERENCE: Did they speak at length without noticeable hesitation? Did they use logical frameworks, sequencing, and connectors to link their ideas?
+- LEXICAL RESOURCE (VOCABULARY): Did they use a wide range of vocabulary with precision? If they only used basic A1/A2 words to describe an advanced topic, penalize their score heavily.
+- GRAMMATICAL RANGE & ACCURACY: Did they use a mix of simple and complex sentence structures? Did they make frequent errors that impeded understanding?
 
 Return STRICTLY this JSON structure (no markdown, no extra text):
 

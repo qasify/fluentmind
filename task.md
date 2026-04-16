@@ -35,14 +35,14 @@
 - [x] Progress dashboard page (level card, multi-stat grid, radar chart, trend bars)
 - [x] Daily activity logging (Supabase table connection established)
 
-## Phase 4: Conversation Engine ❌ (0% — Placeholder pages only)
-- [ ] Text-based conversation with AI (user speaks → STT → AI text → TTS)
-- [ ] Conversation UI (immersive design, live transcript)
-- [ ] Scenario category system
-- [ ] Browser TTS for AI responses
-- [ ] Post-conversation analysis pipeline
-- [ ] Conversation message storage
-- [ ] Debate mode variant
+## Phase 4: Conversation Engine ✅ (100% done)
+- [x] Text-based conversation with AI (user speaks → STT → AI text → better TTS)
+- [x] Conversation UI (immersive design, live transcript)
+- [x] Scenario category system
+- [x] External/Better TTS for AI responses
+- [x] Post-conversation analysis pipeline
+- [x] Conversation message storage
+- [x] Debate mode variant (merged into conversation engine)
 
 ## Phase 5: Curriculum & Intelligence ❌ (0% — Placeholder pages only)
 - [ ] Onboarding speaking assessment

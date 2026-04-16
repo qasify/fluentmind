@@ -116,6 +116,34 @@ export interface Session {
   createdAt: string;
 }
 
+ // ---- Conversation Types ----
+export interface ConversationMessageCorrection {
+  original: string;
+  suggestion: string;
+  rule: string;
+}
+
+export interface ConversationMessage {
+  id: string;
+  conversationId: string;
+  role: "user" | "ai" | "system";
+  text: string;
+  audioUrl?: string;
+  corrections?: ConversationMessageCorrection[];
+  createdAt: string;
+}
+
+export interface Conversation {
+  id: string;
+  scenarioId: string;
+  scenarioTitle: string;
+  status: "active" | "completed";
+  messages: ConversationMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Vocab bank item (for tracking individual words)
 export interface VocabWord {
   id: string;
   word: string;
@@ -229,6 +257,13 @@ interface AppState {
   addMistakes: (mistakes: Omit<UserMistake, "id" | "createdAt" | "status" | "avoidanceCount">[]) => Promise<void>;
   markMistakesAvoided: (ids: string[]) => Promise<void>;
   markMistakesRepeated: (ids: string[]) => Promise<void>;
+  // Conversations
+  conversations: Conversation[];
+  activeConversation: Conversation | null;
+  createConversation: (scenarioId: string, scenarioTitle: string) => Promise<string>;
+  addConversationMessage: (conversationId: string, role: "user" | "ai" | "system", text: string, audioUrl?: string, corrections?: ConversationMessageCorrection[]) => Promise<string>;
+  endConversation: (conversationId: string) => Promise<void>;
+  setActiveConversation: (id: string | null) => void;
 }
 
 // ---- Level Thresholds ----
@@ -328,6 +363,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
   fsrsCards: [],
   badges: ALL_BADGES.map((b) => ({ ...b })),
   mistakes: [],
+  conversations: [],
+  activeConversation: null,
 
   initializeStore: async () => {
     const supabase = createClient();
@@ -339,13 +376,25 @@ export const useAppStore = create<AppState>()((set, get) => ({
     }
 
     try {
-      const [{ data: pData, error: pErr }, { data: upData, error: upErr }, { data: sData, error: sErr }, { data: vData, error: vErr }, { data: fData, error: fErr }, { data: mData, error: mErr }] = await Promise.all([
+      const [
+        { data: pData, error: pErr }, 
+        { data: upData, error: upErr }, 
+        { data: sData, error: sErr }, 
+        { data: vData, error: vErr }, 
+        { data: fData, error: fErr }, 
+        { data: mData, error: mErr },
+        convResponse
+      ] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
         supabase.from('user_progress').select('*').eq('id', user.id).single(),
         supabase.from('sessions').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
         supabase.from('vocabulary_words').select('*').eq('user_id', user.id),
         supabase.from('fsrs_cards').select('*').eq('user_id', user.id),
-        supabase.from('user_mistakes').select('*').eq('user_id', user.id).order('created_at', { ascending: false })
+        supabase.from('user_mistakes').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+        supabase.from('conversations').select(`
+          id, scenario_id, scenario_title, status, created_at, updated_at,
+          conversation_messages ( id, role, text, audio_url, corrections, created_at )
+        `).eq('user_id', user.id).order('created_at', { ascending: false })
       ]);
 
       if (pErr) console.error("Error fetching profiles:", pErr);
@@ -354,6 +403,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       if (vErr) console.error("Error fetching vocabulary:", vErr);
       if (fErr) console.error("Error fetching FSRS cards:", fErr);
       if (mErr) console.error("Error fetching mistakes:", mErr);
+      if (convResponse.error) console.error("Error fetching conversations:", convResponse.error);
 
       if (pData) {
         set({
@@ -436,18 +486,40 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
       if (mData) {
         set({
-           mistakes: mData.map((m: any) => ({
-             id: m.id,
-             errorType: m.error_type,
-             originalText: m.original_text,
-             suggestion: m.suggestion,
-             context: m.context,
-             status: m.status,
-             createdAt: m.created_at,
-             fixedAt: m.fixed_at,
-             avoidanceCount: m.avoidance_count
-           }))
-        })
+          mistakes: mData.map((m: any) => ({
+            id: m.id,
+            errorType: m.error_type,
+            originalText: m.original_text,
+            suggestion: m.suggestion,
+            context: m.context,
+            status: m.status,
+            avoidanceCount: m.avoidance_count,
+            createdAt: m.created_at,
+            fixedAt: m.fixed_at
+          }))
+        });
+      }
+
+      if (convResponse.data) {
+        set({
+          conversations: convResponse.data.map((c: any) => ({
+            id: c.id,
+            scenarioId: c.scenario_id,
+            scenarioTitle: c.scenario_title,
+            status: c.status,
+            messages: (c.conversation_messages || []).map((m: any) => ({
+              id: m.id,
+              conversationId: c.id,
+              role: m.role,
+              text: m.text,
+              audioUrl: m.audio_url,
+              corrections: m.corrections || [],
+              createdAt: m.created_at
+            })).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+            createdAt: c.created_at,
+            updatedAt: c.updated_at
+          }))
+        });
       }
 
       set({ isHydrated: true });
@@ -842,4 +914,100 @@ export const useAppStore = create<AppState>()((set, get) => ({
 
     return newlyUnlocked;
   },
+
+  // ---- Conversations ----
+  createConversation: async (scenarioId, scenarioTitle) => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return "";
+
+    const id = `conv_${Date.now()}`;
+    const newConv: Conversation = {
+      id,
+      scenarioId,
+      scenarioTitle,
+      status: "active",
+      messages: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    set(state => ({ conversations: [newConv, ...state.conversations], activeConversation: newConv }));
+
+    await supabase.from('conversations').insert({
+      id: newConv.id,
+      user_id: user.id,
+      scenario_id: newConv.scenarioId,
+      scenario_title: newConv.scenarioTitle,
+      status: newConv.status,
+      created_at: newConv.createdAt,
+      updated_at: newConv.updatedAt
+    });
+
+    return id;
+  },
+
+  addConversationMessage: async (conversationId, role, text, audioUrl, corrections) => {
+    const supabase = createClient();
+    const id = `msg_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const now = new Date().toISOString();
+
+    const newMsg: ConversationMessage = {
+      id,
+      conversationId,
+      role,
+      text,
+      audioUrl,
+      corrections,
+      createdAt: now
+    };
+
+    set(state => {
+      const updatedConvs = state.conversations.map(c => {
+        if (c.id === conversationId) {
+          return { ...c, messages: [...c.messages, newMsg], updatedAt: now };
+        }
+        return c;
+      });
+      const updatedActive = state.activeConversation?.id === conversationId 
+        ? { ...state.activeConversation, messages: [...state.activeConversation.messages, newMsg], updatedAt: now }
+        : state.activeConversation;
+      
+      return { conversations: updatedConvs, activeConversation: updatedActive };
+    });
+
+    await supabase.from('conversation_messages').insert({
+      id: newMsg.id,
+      conversation_id: newMsg.conversationId,
+      role: newMsg.role,
+      text: newMsg.text,
+      audio_url: newMsg.audioUrl,
+      corrections: newMsg.corrections || [],
+      created_at: newMsg.createdAt
+    });
+
+    return id;
+  },
+
+  endConversation: async (conversationId) => {
+    const supabase = createClient();
+    
+    set(state => {
+      const updatedConvs = state.conversations.map(c => 
+        c.id === conversationId ? { ...c, status: "completed" as const } : c
+      );
+      return { conversations: updatedConvs };
+    });
+
+    await supabase.from('conversations').update({ status: 'completed' }).eq('id', conversationId);
+  },
+
+  setActiveConversation: (id) => {
+    if (!id) {
+      set({ activeConversation: null });
+      return;
+    }
+    const conv = get().conversations.find(c => c.id === id);
+    if (conv) set({ activeConversation: conv });
+  }
 }));
