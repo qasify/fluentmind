@@ -49,7 +49,15 @@ export default function VoiceConversationPage() {
         body: formData
       });
 
-      if (!res.ok) throw new Error("API Failed");
+      if (!res.ok) {
+        let errStr = await res.text();
+        try {
+          const js = JSON.parse(errStr);
+          if (js.details) errStr = js.details;
+          else if (js.error) errStr = js.error;
+        } catch { }
+        // throw new Error(`API Failed (${res.status}): ${errStr}`);
+      }
       const data = await res.json();
 
       if (data.transcript && !data.transcript.startsWith("[SYSTEM")) {
@@ -74,9 +82,13 @@ export default function VoiceConversationPage() {
         speak(data.dialogue);
       }
 
-    } catch (e) {
-      console.error(e);
-      await addConversationMessage(activeConversation.id, "system", "Error connecting to AI. Please try again.");
+    } catch (e: any) {
+      console.error("AI Turn Error:", e);
+      let errMsg = "We're having trouble connecting to the AI right now. Please try again in an hour.";
+      // if (e instanceof Error && e.message && e.message.includes("quota")) {
+      //   errMsg = "You've exceeded the AI API quota limits. Please confirm your billing details or try again later.";
+      // }
+      await addConversationMessage(activeConversation.id, "system", errMsg);
     } finally {
       setInterimTranscript("");
       setIsAiThinking(false);
@@ -184,7 +196,7 @@ export default function VoiceConversationPage() {
   }
 
   return (
-    <div className="page-container max-w-3xl flex flex-col h-[100vh] py-4 overflow-hidden relative fade-in">
+    <div className="page-container !max-w-5xl flex-1 h-full flex flex-col w-full py-4 overflow-hidden relative fade-in">
       {/* Header */}
       <div className="flex items-center justify-between pb-4 border-b border-[rgba(255,255,255,0.08)] shrink-0">
         <div>
@@ -217,7 +229,7 @@ export default function VoiceConversationPage() {
                     </div>
                   )}
                 </div>
-                <div className={`p-4 rounded-2xl ${msg.role === "user" ? "bg-primary-500/20 border border-primary-500/30 text-[#f0f0f5] rounded-tr-sm" : "bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] text-[#c8c8d5] rounded-tl-sm relative"}`}>
+                <div className={`p-4 rounded-2xl ${msg.role === "user" ? "bg-primary-500/20 border border-primary-500/30 text-[#f0f0f5] rounded-tr-sm" : "bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.08)] text-[#c8c8d5] rounded-tl-sm relative"} break-words whitespace-pre-wrap`}>
                   {msg.text}
                 </div>
 

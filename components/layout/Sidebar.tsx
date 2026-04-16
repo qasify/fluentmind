@@ -13,7 +13,7 @@ const mainNav: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: "🏠" },
   { label: "Record", href: "/practice/record", icon: "🎙️" },
   { label: "Conversation", href: "/practice/conversation", icon: "🗣️" },
-  { label: "Debate", href: "/practice/debate", icon: "⚔️" },
+  // { label: "Debate", href: "/practice/debate", icon: "⚔️" },
 ];
 
 const learnNav: NavItem[] = [
@@ -25,6 +25,7 @@ const learnNav: NavItem[] = [
 
 const trackNav: NavItem[] = [
   { label: "Progress", href: "/progress", icon: "📈" },
+  { label: "Mistakes", href: "/mistakes", icon: "🎯" },
   { label: "History", href: "/history", icon: "📂" },
 ];
 
@@ -62,9 +63,8 @@ export default function Sidebar({
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 px-3 py-2 rounded-md font-medium transition-all duration-150 whitespace-nowrap ${
-                isActive ? "text-primary-400 bg-primary-500/10" : "text-[#a0a0b5] hover:text-[#f0f0f5] hover:bg-[rgba(255,255,255,0.03)]"
-              }`}
+              className={`flex items-center gap-3 px-3 py-2 rounded-md font-medium transition-all duration-150 whitespace-nowrap ${isActive ? "text-primary-400 bg-primary-500/10" : "text-[#a0a0b5] hover:text-[#f0f0f5] hover:bg-[rgba(255,255,255,0.03)]"
+                }`}
               onClick={onClose}
             >
               <span className="w-5 h-5 flex items-center justify-center shrink-0 text-base">{item.icon}</span>
@@ -87,9 +87,8 @@ export default function Sidebar({
       )}
 
       <aside
-        className={`fixed top-0 left-0 h-screen w-[260px] bg-background-secondary border-r border-[rgba(255,255,255,0.06)] flex flex-col p-4 transition-transform duration-250 overflow-y-auto overflow-x-hidden z-[200] ${
-          isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-        }`}
+        className={`fixed top-0 left-0 h-screen w-[260px] bg-background-secondary border-r border-[rgba(255,255,255,0.06)] flex flex-col p-4 transition-transform duration-250 overflow-y-auto overflow-x-hidden z-[200] ${isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+          }`}
         id="main-sidebar"
       >
         {/* Logo */}
@@ -129,7 +128,7 @@ export default function Sidebar({
         {/* Bottom */}
         <div className="mt-auto pt-4 border-t border-[rgba(255,255,255,0.06)]">
           {renderNavSection(bottomNav)}
-          
+
           <button
             onClick={async () => {
               const { createClient } = await import("@/lib/supabase/client");

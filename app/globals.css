@@ -169,7 +169,7 @@
 
 @layer utilities {
   .page-container {
-    @apply p-4 md:p-8 max-w-7xl mx-auto;
+    @apply p-4 md:p-8 max-w-7xl;
   }
   .page-header {
     @apply mb-8;

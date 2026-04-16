@@ -386,7 +386,16 @@ CRITICAL INSTRUCTIONS FOR YOU:
         body: formData, // No Content-Type header — browser sets multipart boundary
       });
 
-      if (!response.ok) throw new Error("Analysis failed");
+      if (!response.ok) {
+        let errStr = "Analysis failed";
+        try {
+          const txt = await response.text();
+          const js = JSON.parse(txt);
+          if (js.details) errStr = js.details;
+          else if (js.error) errStr = js.error;
+        } catch {}
+        throw new Error(errStr);
+      }
 
       const analysisData = await response.json();
 
@@ -434,10 +443,14 @@ CRITICAL INSTRUCTIONS FOR YOU:
 
       router.push(`/evaluation/${sessionId}`);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setErrorBanner("Failed to analyze recording. Please try again.");
-      pushToast({ type: "error", title: "Analysis failed", message: "Please try again in a moment.", durationMs: 5000 });
+      let errorMsg = "Failed to analyze recording. Please try again.";
+      if (error instanceof Error && error.message.includes("quota")) {
+        errorMsg = "You've exceeded the AI API quota limits. Please confirm your billing details or try again tomorrow.";
+      }
+      setErrorBanner(errorMsg);
+      pushToast({ type: "error", title: "Analysis failed", message: errorMsg, durationMs: 5000 });
       setState("idle");
     }
   };
@@ -462,7 +475,7 @@ CRITICAL INSTRUCTIONS FOR YOU:
   };
 
   return (
-    <div className="page-container min-h-[100dvh] flex flex-col relative py-4">
+    <div className="page-container flex-1 w-full flex flex-col relative py-4">
 
       {/* Topic Picker Modal */}
       {showTopicPicker && (

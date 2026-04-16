@@ -209,9 +209,11 @@ export default function EvaluationPage({
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {item.suggestions.map((s, j) => {
+                  {(item.suggestions || []).map((s, j) => {
+                    if (!s || !s.word) return null; // Safe guard if AI generated bad shapes
+
                     const wordKey = `${s.word}-${i}-${j}`;
-                    const isAlreadyInBank = vocabularyBank.some((w) => w.word.toLowerCase() === s.word.toLowerCase());
+                    const isAlreadyInBank = vocabularyBank.some((w) => w.word?.toLowerCase() === s.word?.toLowerCase());
                     const justAdded = addedWords.has(wordKey);
                     const isAdded = isAlreadyInBank || justAdded;
 

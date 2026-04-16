@@ -135,12 +135,61 @@ Return ONLY valid JSON in this format:
   },
   "rawAnalysis": {
     "clarity": { "score": 0, "fillerWords": [{"word":"string","count":0}], "totalFillers": 0, "feedback": "string" },
-    "vocabulary": { "score": 0, "lexicalDiversity": 0.0, "cefrLevel": "A1", "basicWordsFlagged": [], "phraseUpgrades": [], "advancedWordsUsed": [], "feedback": "string" },
-    "grammar": { "score": 0, "errors": [], "feedback": "string" },
+    "vocabulary": {
+      "score": 0,
+      "lexicalDiversity": 0.0,
+      "cefrLevel": "A1",
+      "basicWordsFlagged": [
+        {
+          "original": "string",
+          "context": "string",
+          "suggestions": [
+            {
+              "word": "string",
+              "register": "casual|professional|academic",
+              "definition": "string",
+              "pronunciation": "string"
+            }
+          ]
+        }
+      ],
+      "phraseUpgrades": [
+        {
+          "original": "string",
+          "suggestion": "string",
+          "explanation": "string"
+        }
+      ],
+      "advancedWordsUsed": ["string"],
+      "feedback": "string"
+    },
+    "grammar": {
+      "score": 0,
+      "errors": [
+        {
+          "originalText": "string",
+          "correctedText": "string",
+          "errorType": "string",
+          "explanation": "string"
+        }
+      ],
+      "feedback": "string"
+    },
     "structure": { "score": 0, "frameworkDetected": "none", "frameworkAdherence": { "segments": [], "missingElements": [] }, "bestFrameworks": [], "coherenceScore": 0, "transitionWordsUsed": [], "feedback": "string", "suggestedFramework": "string" },
     "fluency": { "score": 0, "wordsPerMinute": 0, "selfCorrectionCount": 0, "ieltsBandEstimate": 0, "feedback": "string" },
     "confidence": { "score": 0, "hedgingPhrases": [], "assertivePhrases": [], "feedback": "string" },
-    "overall": { "score": 0, "summary": "string", "topStrength": "string", "topWeakness": "string", "actionableTip": "string", "nativeVersion": "string", "upgradedTranscript": "string", "newMistakesToTrack": [], "mistakesAvoided": [], "mistakesRepeated": [] }
+    "overall": {
+      "score": 0,
+      "summary": "string",
+      "topStrength": "string",
+      "topWeakness": "string",
+      "actionableTip": "string",
+      "nativeVersion": "string",
+      "upgradedTranscript": "string",
+      "newMistakesToTrack": [],
+      "mistakesAvoided": [],
+      "mistakesRepeated": []
+    }
   }
 }`;
 

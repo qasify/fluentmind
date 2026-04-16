@@ -56,7 +56,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="w-[36px]" />
       </div>
 
-      <main className="md:ml-[260px] min-h-screen transition-all duration-250 flex flex-col">
+      <main className="md:ml-[260px] min-h-[calc(100dvh-64px)] md:min-h-[100dvh] transition-all duration-250 flex flex-col">
         {children}
       </main>
     </div>
