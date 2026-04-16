@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAppStore } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
+import { useToastStore } from "@/lib/toastStore";
 
 // Use window-level access for cross-browser Speech Recognition
 function getSpeechRecognitionAPI(): (new () => SpeechRecognition) | null {
@@ -83,6 +84,7 @@ function RecordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { addSession, addXp, updateStreak, checkAndUnlockBadges, sessions, mistakes, addMistakes, markMistakesAvoided, markMistakesRepeated, eloRating, profile } = useAppStore();
+  const pushToast = useToastStore((s) => s.pushToast);
 
   // Topic picker state
   const [showTopicPicker, setShowTopicPicker] = useState(false);
@@ -104,6 +106,7 @@ function RecordContent() {
 
   // Visualizer DB level
   const [dbLevel, setDbLevel] = useState(0);
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
   // Refs for underlying engines
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -159,7 +162,8 @@ function RecordContent() {
     const SpeechRecognitionAPI = getSpeechRecognitionAPI();
 
     if (!SpeechRecognitionAPI) {
-      alert("Speech Recognition is not supported in this browser. Please use Chrome.");
+      setErrorBanner("Speech Recognition is not supported in this browser. Live transcription will be unavailable.");
+      pushToast({ type: "info", title: "Live transcript unavailable", message: "Speech Recognition is not supported in this browser.", durationMs: 4500 });
       return null;
     }
 
@@ -237,6 +241,7 @@ function RecordContent() {
 
   const startRecording = async () => {
     try {
+      setErrorBanner(null);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
@@ -286,7 +291,8 @@ function RecordContent() {
 
     } catch (err) {
       console.error("Failed to start recording:", err);
-      alert("Microphone access is required to use the recording studio.");
+      setErrorBanner("Microphone access is required to use the recording studio.");
+      pushToast({ type: "error", title: "Microphone blocked", message: "Please allow microphone access and try again.", durationMs: 5000 });
     }
   };
 
@@ -430,7 +436,8 @@ CRITICAL INSTRUCTIONS FOR YOU:
 
     } catch (error) {
       console.error(error);
-      alert("Failed to analyze recording. Please try again.");
+      setErrorBanner("Failed to analyze recording. Please try again.");
+      pushToast({ type: "error", title: "Analysis failed", message: "Please try again in a moment.", durationMs: 5000 });
       setState("idle");
     }
   };
@@ -455,7 +462,7 @@ CRITICAL INSTRUCTIONS FOR YOU:
   };
 
   return (
-    <div className="page-container h-[100vh] flex flex-col relative py-4">
+    <div className="page-container min-h-[100dvh] flex flex-col relative py-4">
 
       {/* Topic Picker Modal */}
       {showTopicPicker && (
@@ -538,6 +545,12 @@ CRITICAL INSTRUCTIONS FOR YOU:
         )}
       </div>
 
+      {errorBanner && (
+        <div className="mb-4 bg-danger-500/10 border border-danger-500/20 text-danger-400 rounded-xl px-4 py-3 text-sm">
+          {errorBanner}
+        </div>
+      )}
+
       <div className="flex-1 flex flex-col items-center justify-center max-w-3xl mx-auto w-full">
         {/* Topic Card */}
         <div className={`w-full transition-all duration-500 mb-6 ${state === "recording" ? "scale-105" : ""}`}>
@@ -571,7 +584,7 @@ CRITICAL INSTRUCTIONS FOR YOU:
         </div>
 
         {/* Live Transcript / Empty state */}
-        <div className="w-full flex-1 min-h-[140px] max-h-[180px] md:max-h-[220px] bg-background-tertiary border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 mb-6 overflow-y-auto flex flex-col relative shrinks-0">
+        <div className="w-full flex-1 min-h-[140px] max-h-[180px] md:max-h-[220px] bg-background-tertiary border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 mb-6 overflow-y-auto flex flex-col relative shrink-0">
           {state === "idle" && (
             <div className="m-auto text-[#6b6b80] max-w-sm text-center">
               Hit record when you&apos;re ready. Try to speak continuously for at least 2 minutes without worrying about mistakes.

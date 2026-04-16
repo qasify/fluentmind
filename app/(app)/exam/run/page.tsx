@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStore } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
+import { useToastStore } from "@/lib/toastStore";
 
 type RunnerState = "idle" | "recording" | "processing";
 type RateLimitState = { message: string; retryAfterSeconds: number } | null;
@@ -17,6 +18,7 @@ function formatTime(seconds: number): string {
 
 export default function ExamRunPage() {
   const router = useRouter();
+  const pushToast = useToastStore((s) => s.pushToast);
   const {
     currentExamRun,
     currentExamStepIndex,
@@ -40,6 +42,7 @@ export default function ExamRunPage() {
   const [prepRemaining, setPrepRemaining] = useState<number | null>(null);
   const [prepNotes, setPrepNotes] = useState("");
   const [rateLimit, setRateLimit] = useState<RateLimitState>(null);
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [pendingAudio, setPendingAudio] = useState<Blob | null>(null);
   const [pendingStorageUrl, setPendingStorageUrl] = useState<string | undefined>(undefined);
   const [pendingSessionId, setPendingSessionId] = useState<string>("");
@@ -72,6 +75,7 @@ export default function ExamRunPage() {
     setSecondsElapsed(0);
     setInterimTranscript("");
     setRateLimit(null);
+    setErrorBanner(null);
     setPendingAudio(null);
     setPendingStorageUrl(undefined);
     setPendingSessionId("");
@@ -142,6 +146,12 @@ export default function ExamRunPage() {
     const json = await res.json();
 
     if (json?.rateLimited) {
+      pushToast({
+        type: "warning",
+        title: "Scoring rate-limited",
+        message: json.message || "Please retry scoring in a moment.",
+        durationMs: 5000,
+      });
       setRateLimit({
         message: json.message || "Scoring is temporarily rate-limited. Please retry in a moment.",
         retryAfterSeconds: Number(json.retryAfterSeconds || 30),
@@ -261,7 +271,7 @@ export default function ExamRunPage() {
       }
     } catch (e) {
       console.error(e);
-      alert("Microphone access is required for exam mode.");
+      setErrorBanner("Microphone access is required for exam mode.");
     }
   };
 
@@ -318,7 +328,7 @@ export default function ExamRunPage() {
       await submitForScoring({ audioBlob, sessionId, storageUrl, wpm });
     } catch (e: any) {
       console.error(e);
-      alert(e?.message || "Failed to analyze exam response.");
+      setErrorBanner(e?.message || "Failed to analyze exam response.");
       setRunnerState("idle");
     }
   };
@@ -378,6 +388,12 @@ export default function ExamRunPage() {
         </div>
       </div>
 
+      {errorBanner && (
+        <div className="card p-4 mb-6 border border-danger-500/20 bg-danger-500/5">
+          <div className="text-sm text-danger-400">{errorBanner}</div>
+        </div>
+      )}
+
       {rateLimit && (
         <div className="card p-6 mb-6 border border-warning-400/20 bg-warning-400/5">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -404,7 +420,7 @@ export default function ExamRunPage() {
                     });
                   } catch (e: any) {
                     console.error(e);
-                    alert(e?.message || "Retry failed.");
+                    setErrorBanner(e?.message || "Retry failed.");
                     setRunnerState("idle");
                   }
                 }}

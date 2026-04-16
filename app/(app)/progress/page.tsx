@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useAppStore } from "@/lib/store";
 import { motion, type Variants } from "framer-motion";
@@ -15,6 +15,9 @@ const stagger: Variants = {
   visible: { opacity: 1, transition: { staggerChildren: 0.05 } },
 };
 
+const DIM_LABELS = ["Clarity", "Vocabulary", "Grammar", "Structure", "Fluency", "Confidence"] as const;
+const DIM_KEYS = ["clarity", "vocabulary", "grammar", "structure", "fluency", "confidence"] as const;
+
 export default function ProgressPage() {
   const {
     totalXp, currentLevel, currentLevelTitle, currentStreak, longestStreak,
@@ -28,34 +31,40 @@ export default function ProgressPage() {
   };
 
   // Calculate averages from sessions
-  const avgScore = sessions.length > 0
-    ? Math.round(sessions.reduce((sum, s) => sum + (s.analysis.overall?.score ?? 0), 0) / sessions.length)
-    : 0;
+  const { avgScore, avgWpm, totalMinutes } = useMemo(() => {
+    const avgScore = sessions.length > 0
+      ? Math.round(sessions.reduce((sum, s) => sum + (s.analysis.overall?.score ?? 0), 0) / sessions.length)
+      : 0;
 
-  const avgWpm = sessions.length > 0
-    ? Math.round(sessions.reduce((sum, s) => sum + s.audioMetadata.wpm, 0) / sessions.length)
-    : 0;
+    const avgWpm = sessions.length > 0
+      ? Math.round(sessions.reduce((sum, s) => sum + s.audioMetadata.wpm, 0) / sessions.length)
+      : 0;
 
-  const totalMinutes = Math.round(
-    sessions.reduce((sum, s) => sum + s.audioMetadata.totalDurationSeconds, 0) / 60
-  );
+    const totalMinutes = Math.round(
+      sessions.reduce((sum, s) => sum + s.audioMetadata.totalDurationSeconds, 0) / 60
+    );
+
+    return { avgScore, avgWpm, totalMinutes };
+  }, [sessions]);
 
   const unlockedBadges = badges.filter((b) => b.unlockedAt);
 
   // Dimension averages for radar
-  const dimLabels = ["Clarity", "Vocabulary", "Grammar", "Structure", "Fluency", "Confidence"];
-  const dimKeys = ["clarity", "vocabulary", "grammar", "structure", "fluency", "confidence"] as const;
-  const dimAverages = dimKeys.map((key) =>
-    sessions.length > 0
-      ? Math.round(sessions.reduce((sum, s) => sum + (s.analysis[key]?.score ?? 0), 0) / sessions.length)
-      : 0
-  );
+  const dimAverages = useMemo(() => (
+    DIM_KEYS.map((key) =>
+      sessions.length > 0
+        ? Math.round(sessions.reduce((sum, s) => sum + (s.analysis[key]?.score ?? 0), 0) / sessions.length)
+        : 0
+    )
+  ), [sessions]);
 
   // Session score trend (last 10)
-  const scoreTrend = sessions.slice(0, 10).reverse().map((s, i) => ({
-    label: `S${i + 1}`,
-    score: s.analysis.overall?.score ?? 0,
-  }));
+  const scoreTrend = useMemo(() => (
+    sessions.slice(0, 10).reverse().map((s, i) => ({
+      label: `S${i + 1}`,
+      score: s.analysis.overall?.score ?? 0,
+    }))
+  ), [sessions]);
 
   // XP milestones
   const LEVELS = [
@@ -73,19 +82,23 @@ export default function ProgressPage() {
   const activeMistakes = mistakes.filter(m => m.status === 'active');
   const fixedMistakes = mistakes.filter(m => m.status === 'fixed');
 
-  const examSessions = sessions.filter((s) => s.type === "exam" && (s.analysis?.fluency?.ieltsBandEstimate ?? 0) > 0);
-  const latestExamBand = examSessions[0]?.analysis?.fluency?.ieltsBandEstimate ?? 0;
-  const avgExamBand = examSessions.length > 0
-    ? Math.round((examSessions.reduce((sum, s) => sum + (s.analysis?.fluency?.ieltsBandEstimate ?? 0), 0) / examSessions.length) * 2) / 2
-    : 0;
-  const bestExamBand = examSessions.length > 0
-    ? Math.max(...examSessions.map((s) => s.analysis?.fluency?.ieltsBandEstimate ?? 0))
-    : 0;
+  const { examSessions, latestExamBand, avgExamBand, bestExamBand, examBandTrend } = useMemo(() => {
+    const examSessions = sessions.filter((s) => s.type === "exam" && (s.analysis?.fluency?.ieltsBandEstimate ?? 0) > 0);
+    const latestExamBand = examSessions[0]?.analysis?.fluency?.ieltsBandEstimate ?? 0;
+    const avgExamBand = examSessions.length > 0
+      ? Math.round((examSessions.reduce((sum, s) => sum + (s.analysis?.fluency?.ieltsBandEstimate ?? 0), 0) / examSessions.length) * 2) / 2
+      : 0;
+    const bestExamBand = examSessions.length > 0
+      ? Math.max(...examSessions.map((s) => s.analysis?.fluency?.ieltsBandEstimate ?? 0))
+      : 0;
 
-  const examBandTrend = examSessions.slice(0, 10).reverse().map((s, i) => ({
-    label: `E${i + 1}`,
-    band: s.analysis?.fluency?.ieltsBandEstimate ?? 0,
-  }));
+    const examBandTrend = examSessions.slice(0, 10).reverse().map((s, i) => ({
+      label: `E${i + 1}`,
+      band: s.analysis?.fluency?.ieltsBandEstimate ?? 0,
+    }));
+
+    return { examSessions, latestExamBand, avgExamBand, bestExamBand, examBandTrend };
+  }, [sessions]);
 
   return (
     <div className="page-container fade-in">
@@ -211,7 +224,7 @@ export default function ProgressPage() {
           <p className="text-sm text-[#a0a0b5] mb-4">
             Choose a target and see your gap based on your average exam band.
           </p>
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[6, 6.5, 7, 7.5].map((target) => {
               const gap = avgExamBand > 0 ? Math.round((target - avgExamBand) * 2) / 2 : null;
               return (
@@ -242,7 +255,7 @@ export default function ProgressPage() {
             <div className="text-center py-8 text-[#6b6b80]">Complete sessions to see your skill radar</div>
           ) : (
             <div className="grid gap-3">
-              {dimLabels.map((label, i) => (
+              {DIM_LABELS.map((label, i) => (
                 <div key={label} className="flex items-center gap-3">
                   <span className="text-sm font-semibold w-24 text-[#a0a0b5]">{label}</span>
                   <div className="flex-1 h-3 bg-background-tertiary rounded-full overflow-hidden">

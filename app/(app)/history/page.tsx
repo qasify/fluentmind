@@ -2,46 +2,47 @@
 
 import { useAppStore, type Session } from "@/lib/store";
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 export default function HistoryPage() {
   const { sessions, conversations, setCurrentSession } = useAppStore();
   const [activeTab, setActiveTab] = useState<"recordings" | "conversations">("recordings");
   const [viewMode, setViewMode] = useState<"topic" | "recent">("topic");
 
-  // Group by topic (case insensitive for better grouping)
-  const groupedSessions = sessions.reduce((acc, session) => {
-    const topicKey = session.topic.trim().toLowerCase();
-    if (!acc[topicKey]) {
-      // Use the exact casing of the first encountered session for display
-      acc[topicKey] = { displayTopic: session.topic.trim(), sessions: [] };
-    }
-    acc[topicKey].sessions.push(session);
-    return acc;
-  }, {} as Record<string, { displayTopic: string; sessions: Session[] }>);
+  const sortedTopics = useMemo(() => {
+    const groupedSessions = sessions.reduce((acc, session) => {
+      const topicKey = session.topic.trim().toLowerCase();
+      if (!acc[topicKey]) {
+        // Use the exact casing of the first encountered session for display
+        acc[topicKey] = { displayTopic: session.topic.trim(), sessions: [] };
+      }
+      acc[topicKey].sessions.push(session);
+      return acc;
+    }, {} as Record<string, { displayTopic: string; sessions: Session[] }>);
 
-  // Sort groups by the most recent session in that group
-  const sortedTopics = Object.values(groupedSessions).sort((a, b) => {
-    const latestA = new Date(a.sessions[0].createdAt).getTime();
-    const latestB = new Date(b.sessions[0].createdAt).getTime();
-    return latestB - latestA; // Sort newest first
-  });
+    return Object.values(groupedSessions).sort((a, b) => {
+      const latestA = new Date(a.sessions[0].createdAt).getTime();
+      const latestB = new Date(b.sessions[0].createdAt).getTime();
+      return latestB - latestA; // Sort newest first
+    });
+  }, [sessions]);
 
-  // Group Conversations by Scenario Title
-  const groupedConversations = conversations.reduce((acc, conv) => {
-    const topicKey = conv.scenarioTitle.trim().toLowerCase();
-    if (!acc[topicKey]) {
-      acc[topicKey] = { displayTopic: conv.scenarioTitle.trim(), conversations: [] };
-    }
-    acc[topicKey].conversations.push(conv);
-    return acc;
-  }, {} as Record<string, { displayTopic: string; conversations: any[] }>);
+  const sortedConversationTopics = useMemo(() => {
+    const groupedConversations = conversations.reduce((acc, conv) => {
+      const topicKey = conv.scenarioTitle.trim().toLowerCase();
+      if (!acc[topicKey]) {
+        acc[topicKey] = { displayTopic: conv.scenarioTitle.trim(), conversations: [] };
+      }
+      acc[topicKey].conversations.push(conv);
+      return acc;
+    }, {} as Record<string, { displayTopic: string; conversations: any[] }>);
 
-  const sortedConversationTopics = Object.values(groupedConversations).sort((a, b) => {
-    const latestA = new Date(a.conversations[0].createdAt).getTime();
-    const latestB = new Date(b.conversations[0].createdAt).getTime();
-    return latestB - latestA;
-  });
+    return Object.values(groupedConversations).sort((a, b) => {
+      const latestA = new Date(a.conversations[0].createdAt).getTime();
+      const latestB = new Date(b.conversations[0].createdAt).getTime();
+      return latestB - latestA;
+    });
+  }, [conversations]);
 
   return (
     <div className="page-container fade-in">

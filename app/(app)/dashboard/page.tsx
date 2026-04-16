@@ -8,6 +8,7 @@ export default function Dashboard() {
   const {
     currentStreak, longestStreak, sessions, vocabularyBank, profile,
     totalXp, currentLevel, currentLevelTitle, checkAndUnlockBadges, getWordsDueForReview,
+    mistakes, eloRating,
   } = useAppStore();
 
   // Check for new badges on mount
@@ -15,7 +16,7 @@ export default function Dashboard() {
     checkAndUnlockBadges();
   }, [checkAndUnlockBadges]);
 
-  const { mistakes, vocabularyBank: vocabBank, eloRating } = useAppStore();
+  const vocabBank = vocabularyBank;
   const dueWords = getWordsDueForReview().length;
   const displayName = profile.displayName || "Speaker";
 

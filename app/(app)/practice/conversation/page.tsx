@@ -3,6 +3,7 @@
 import { useAppStore } from "@/lib/store";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useToastStore } from "@/lib/toastStore";
 
 const SCENARIO_CATEGORIES = [
   {
@@ -49,15 +50,19 @@ export default function ConversationScenariosPage() {
   const router = useRouter();
   const { createConversation } = useAppStore();
   const [isStarting, setIsStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const pushToast = useToastStore((s) => s.pushToast);
 
   const handleStart = async (scenarioId: string, scenarioTitle: string) => {
     setIsStarting(true);
+    setError(null);
     const convId = await createConversation(scenarioId, scenarioTitle);
     if (convId) {
       router.push(`/practice/conversation/${convId}`);
     } else {
       setIsStarting(false);
-      alert("Failed to start conversation. Are you logged in?");
+      setError("Failed to start conversation. Please check your login and try again.");
+      pushToast({ type: "error", title: "Couldn’t start", message: "Please check your login and try again.", durationMs: 5000 });
     }
   };
 
@@ -68,6 +73,11 @@ export default function ConversationScenariosPage() {
         <p className="text-lg text-[#a0a0b5]">
           Select a scenario to start a voice chat. The AI will respond in character and secretly check your grammar!
         </p>
+        {error && (
+          <div className="mt-4 bg-danger-500/10 border border-danger-500/20 text-danger-400 rounded-xl px-4 py-3 text-sm">
+            {error}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-10 pb-20">

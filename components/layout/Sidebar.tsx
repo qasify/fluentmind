@@ -81,13 +81,13 @@ export default function Sidebar({
       {/* Mobile overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[199] md:hidden"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[190] md:hidden"
           onClick={onClose}
         />
       )}
 
       <aside
-        className={`fixed top-0 left-0 h-screen w-[260px] bg-background-secondary border-r border-[rgba(255,255,255,0.06)] flex flex-col p-4 transition-transform duration-250 overflow-y-auto overflow-x-hidden z-[100] ${
+        className={`fixed top-0 left-0 h-screen w-[260px] bg-background-secondary border-r border-[rgba(255,255,255,0.06)] flex flex-col p-4 transition-transform duration-250 overflow-y-auto overflow-x-hidden z-[200] ${
           isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
         id="main-sidebar"
