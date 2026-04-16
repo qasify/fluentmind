@@ -88,7 +88,7 @@ export default function HomeworkPage() {
                   {!task.isCompleted && (
                     <>
                       <Link
-                        href={`/practice/write?topic=${encodeURIComponent(task.targetFocus || task.title)}`}
+                        href={`/practice/write?title=${encodeURIComponent(task.title)}&prompt=${encodeURIComponent(`${task.title}. ${task.description || ""}`)}&focus=${encodeURIComponent(task.targetFocus || "")}`}
                         className="btn btn-primary btn-sm"
                       >
                         Start Submission

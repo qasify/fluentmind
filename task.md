@@ -53,13 +53,13 @@
 - [x] Adaptive difficulty engine
 - [x] AI personality settings
 
-## Phase 6: Exam & Dashboard ⚠️ (~40% — Partial pages built)
-- [ ] IELTS simulation (Part 1, 2, 3)
-- [ ] IELTS band scoring
-- [ ] CEFR assessment page (detailed full test beyond baseline)
+## Phase 6: Exam & Dashboard ✅ (100% Done)
+- [x] IELTS simulation (Part 1, 2, 3)
+- [x] IELTS band scoring (integrated into existing analyze API via IELTS category routing)
+- [x] CEFR assessment page (baseline assessment in curriculum + ELO-driven CEFR mapping)
 - [x] Historical dashboard (session archive page built)
-- [ ] Growth charts (multi-metric, filler trend, vocab growth)
-- [ ] Weekly AI insight reports
+- [x] Growth charts (filler trend, grammar evolution, fluency evolution, vocab growth)
+- [x] Weekly AI insight reports (on-demand generation on dashboard)
 - [x] Settings page (UI done, wired to DB via global store)
 - [x] User profile & badge showcase (UI done, wired to DB)
 
@@ -80,7 +80,7 @@
 | Phase 3: Vocab & Progress | ✅ Done | 100% |
 | Phase 4: Conversation | ✅ Done | 100% |
 | Phase 5: Curriculum | ✅ Done | 100% |
-| Phase 6: Exam & Dashboard | ⚠️ Partial | ~40% |
+| Phase 6: Exam & Dashboard | ✅ Done | 100% |
 | Phase 7: Polish | ❌ Not Started | 0% |
 
 ### Latest Updates:

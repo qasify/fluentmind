@@ -1,5 +1,12 @@
 import { create } from "zustand";
 import { createClient } from "@/lib/supabase/client";
+import {
+  createIeltsSpeakingRunPlan,
+  type ExamMode,
+  type ExamRunPlan,
+  type ExamStepPlan,
+  type IELTSPart,
+} from "@/lib/exams/ieltsSpeaking";
 
 // ---- Types ----
 export interface RuleExample {
@@ -138,9 +145,29 @@ export interface Session {
     silenceTimeSeconds: number;
     pauseCount: number;
     wpm: number;
+    exam?: {
+      runId: string;
+      examType: "ielts_speaking";
+      part: IELTSPart;
+      stepId: string;
+      stepIndex: number;
+      mode: ExamMode;
+    };
   };
   xpEarned: number;
   createdAt: string;
+}
+
+export interface ExamStepResult {
+  step: ExamStepPlan;
+  sessionId: string;
+  bands?: {
+    fluency: number;
+    lexical: number;
+    grammar: number;
+    pronunciation: number;
+    overall: number;
+  };
 }
 
  // ---- Conversation Types ----
@@ -294,6 +321,14 @@ interface AppState {
   addConversationMessage: (conversationId: string, role: "user" | "ai" | "system", text: string, audioUrl?: string, corrections?: ConversationMessageCorrection[]) => Promise<string>;
   endConversation: (conversationId: string) => Promise<void>;
   setActiveConversation: (id: string | null) => void;
+  // Exams
+  currentExamRun: ExamRunPlan | null;
+  currentExamStepIndex: number;
+  currentExamResults: ExamStepResult[];
+  startExamRun: (mode: ExamMode, part?: IELTSPart) => void;
+  goToExamStep: (index: number) => void;
+  completeExamStep: (payload: { sessionId: string; step: ExamStepPlan; bands?: ExamStepResult["bands"] }) => void;
+  finishExamRun: () => void;
   // Curriculums
   curriculums: Curriculum[];
   activeCurriculum: Curriculum | null;
@@ -417,6 +452,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
   mistakes: [],
   conversations: [],
   activeConversation: null,
+  currentExamRun: null,
+  currentExamStepIndex: 0,
+  currentExamResults: [],
   curriculums: [],
   activeCurriculum: null,
 
@@ -666,6 +704,38 @@ export const useAppStore = create<AppState>()((set, get) => ({
         .update({ elo_rating: nextEloRating })
         .eq('id', user.id);
     }
+  },
+
+  // ---- Exams ----
+  startExamRun: (mode, part) => {
+    const plan = createIeltsSpeakingRunPlan({ mode, part });
+    set({
+      currentExamRun: plan,
+      currentExamStepIndex: 0,
+      currentExamResults: [],
+    });
+  },
+
+  goToExamStep: (index) => {
+    const run = get().currentExamRun;
+    if (!run) return;
+    const clamped = Math.max(0, Math.min(index, run.steps.length - 1));
+    set({ currentExamStepIndex: clamped });
+  },
+
+  completeExamStep: ({ sessionId, step, bands }) => {
+    set((state) => {
+      const existingIdx = state.currentExamResults.findIndex((r) => r.step.id === step.id);
+      const nextResults = [...state.currentExamResults];
+      const nextResult: ExamStepResult = { step, sessionId, bands };
+      if (existingIdx >= 0) nextResults[existingIdx] = nextResult;
+      else nextResults.push(nextResult);
+      return { currentExamResults: nextResults };
+    });
+  },
+
+  finishExamRun: () => {
+    set({ currentExamRun: null, currentExamStepIndex: 0, currentExamResults: [] });
   },
 
   addMistakes: async (mistakesData) => {

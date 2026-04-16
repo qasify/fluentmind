@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAppStore } from "@/lib/store";
 
@@ -15,10 +15,35 @@ export default function Dashboard() {
     checkAndUnlockBadges();
   }, [checkAndUnlockBadges]);
 
+  const { mistakes, vocabularyBank: vocabBank, eloRating } = useAppStore();
   const dueWords = getWordsDueForReview().length;
   const displayName = profile.displayName || "Speaker";
 
+  // Weekly Insight State
+  const [insight, setInsight] = useState<any>(null);
+  const [insightLoading, setInsightLoading] = useState(false);
+
+  const generateInsight = async () => {
+    setInsightLoading(true);
+    try {
+      const res = await fetch("/api/ai/weekly-insight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessions, mistakes, vocabularyBank: vocabBank, profile, eloRating }),
+      });
+      const json = await res.json();
+      if (json.success) setInsight(json.data);
+    } catch (e) {
+      console.error("Insight generation failed:", e);
+    } finally {
+      setInsightLoading(false);
+    }
+  };
+
   const recentSessions = sessions.slice(0, 3);
+  const examSessions = sessions.filter((s) => s.type === "exam");
+  const latestExam = examSessions[0];
+  const latestExamBand = latestExam?.analysis?.fluency?.ieltsBandEstimate ?? null;
 
   const avgScore = sessions.length > 0
     ? Math.round(sessions.reduce((sum, s) => sum + (s.analysis?.overall?.score || 0), 0) / sessions.length)
@@ -77,9 +102,84 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Weekly AI Insight */}
+      <div className="card p-6 mb-8 border border-[rgba(255,255,255,0.05)]">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="heading-5 flex items-center gap-2"><span>🧠</span> Weekly AI Insight</h2>
+          <button
+            onClick={generateInsight}
+            disabled={insightLoading}
+            className="btn btn-secondary btn-sm"
+          >
+            {insightLoading ? "Analyzing..." : insight ? "🔄 Refresh" : "✨ Generate"}
+          </button>
+        </div>
+        {insight ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="heading-4">{insight.headline}</h3>
+              <span className={`text-2xl font-extrabold ${insight.weeklyGrade?.startsWith('A') ? 'text-success-400' : insight.weeklyGrade?.startsWith('B') ? 'text-primary-400' : insight.weeklyGrade?.startsWith('C') ? 'text-warning-400' : 'text-danger-400'}`}>
+                {insight.weeklyGrade}
+              </span>
+            </div>
+            <p className="text-sm text-[#a0a0b5]">{insight.summary}</p>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="bg-success-400/5 border border-success-400/10 rounded-xl p-4">
+                <h4 className="text-xs font-bold text-success-400 uppercase tracking-widest mb-2">🏆 Wins</h4>
+                <ul className="space-y-1">
+                  {insight.wins?.map((w: string, i: number) => (
+                    <li key={i} className="text-sm text-[#c8c8d5] flex items-start gap-2"><span className="text-success-400">✓</span> {w}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="bg-warning-400/5 border border-warning-400/10 rounded-xl p-4">
+                <h4 className="text-xs font-bold text-warning-400 uppercase tracking-widest mb-2">🎯 Focus Next Week</h4>
+                <ul className="space-y-1">
+                  {insight.focusAreas?.map((f: string, i: number) => (
+                    <li key={i} className="text-sm text-[#c8c8d5] flex items-start gap-2"><span className="text-warning-400">→</span> {f}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            {insight.motivationalQuote && (
+              <div className="text-center text-sm italic text-[#8b8b9d] pt-2 border-t border-[rgba(255,255,255,0.04)]">
+                &quot;{insight.motivationalQuote}&quot;
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="text-center text-sm text-[#6b6b80] py-4">Click &quot;Generate&quot; to get your personalized weekly performance report powered by AI.</p>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content Area */}
         <div className="lg:col-span-2 flex flex-col gap-6">
+          {/* Exam Snapshot */}
+          <section>
+            <div className="card p-6 border border-[rgba(255,255,255,0.05)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="heading-5 mb-1">🎓 IELTS Exam Snapshot</h2>
+                <p className="text-sm text-[#a0a0b5]">
+                  Practice with timed, one-prompt-at-a-time exam flow and review runs in Exam History.
+                </p>
+                <div className="mt-3 text-sm text-[#6b6b80]">
+                  Latest band:{" "}
+                  <span className="font-extrabold text-primary-400">
+                    {latestExamBand ?? "—"}
+                  </span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Link href="/exam" className="btn btn-primary btn-sm">
+                  Start Exam
+                </Link>
+                <Link href="/history/exams" className="btn btn-secondary btn-sm">
+                  Exam History
+                </Link>
+              </div>
+            </div>
+          </section>
           {/* Review Alert */}
           {dueWords > 0 && (
             <Link
