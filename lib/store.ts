@@ -2,6 +2,17 @@ import { create } from "zustand";
 import { createClient } from "@/lib/supabase/client";
 
 // ---- Types ----
+export interface UserMistake {
+  id: string;
+  errorType: "grammar" | "vocabulary" | "phrase" | "action_step";
+  originalText: string;
+  suggestion: string;
+  context: string;
+  status: "active" | "fixed";
+  createdAt: string;
+  fixedAt?: string;
+  avoidanceCount: number;
+};
 export interface SessionAnalysis {
   clarity: {
     score: number;
@@ -20,7 +31,13 @@ export interface SessionAnalysis {
         word: string;
         register: string;
         definition: string;
+        pronunciation: string;
       }>;
+    }>;
+    phraseUpgrades: Array<{
+      original: string;
+      suggestion: string;
+      explanation: string;
     }>;
     advancedWordsUsed: string[];
     feedback: string;
@@ -42,6 +59,7 @@ export interface SessionAnalysis {
       segments: Array<{ label: string; present: boolean }>;
       missingElements: string[];
     };
+    bestFrameworks: Array<{ name: string; fit: string }>;
     coherenceScore: number;
     transitionWordsUsed: string[];
     feedback: string;
@@ -66,6 +84,16 @@ export interface SessionAnalysis {
     topStrength: string;
     topWeakness: string;
     actionableTip: string;
+    nativeVersion: string;
+    upgradedTranscript: string;
+    newMistakesToTrack: Array<{
+      originalText: string;
+      suggestion: string;
+      errorType: "grammar" | "vocabulary" | "phrase" | "action_step";
+      context: string;
+    }>;
+    mistakesAvoided: string[]; // List of IDs the user successfully avoided this session
+    mistakesRepeated: string[]; // List of IDs the user repeated this session
   };
 }
 
@@ -180,6 +208,9 @@ interface AppState {
   // Badges
   badges: Badge[];
 
+  // Mistakes Ledger
+  mistakes: UserMistake[];
+
   // Actions
   setProfile: (profile: Partial<UserProfile>) => Promise<void>;
   completeOnboarding: () => Promise<void>;
@@ -192,9 +223,12 @@ interface AppState {
   updateVocabMastery: (id: string, level: VocabWord["masteryLevel"]) => Promise<void>;
   // FSRS
   reviewWord: (wordId: string, rating: 1 | 2 | 3 | 4) => Promise<void>;
-  getWordsDueForReview: () => VocabWord[];
   // Badges
   checkAndUnlockBadges: () => Promise<Badge[]>;
+  // Mistakes
+  addMistakes: (mistakes: Omit<UserMistake, "id" | "createdAt" | "status" | "avoidanceCount">[]) => Promise<void>;
+  markMistakesAvoided: (ids: string[]) => Promise<void>;
+  markMistakesRepeated: (ids: string[]) => Promise<void>;
 }
 
 // ---- Level Thresholds ----
@@ -293,6 +327,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   vocabularyBank: [],
   fsrsCards: [],
   badges: ALL_BADGES.map((b) => ({ ...b })),
+  mistakes: [],
 
   initializeStore: async () => {
     const supabase = createClient();
@@ -304,12 +339,13 @@ export const useAppStore = create<AppState>()((set, get) => ({
     }
 
     try {
-      const [{ data: pData, error: pErr }, { data: upData, error: upErr }, { data: sData, error: sErr }, { data: vData, error: vErr }, { data: fData, error: fErr }] = await Promise.all([
+      const [{ data: pData, error: pErr }, { data: upData, error: upErr }, { data: sData, error: sErr }, { data: vData, error: vErr }, { data: fData, error: fErr }, { data: mData, error: mErr }] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
         supabase.from('user_progress').select('*').eq('id', user.id).single(),
         supabase.from('sessions').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
         supabase.from('vocabulary_words').select('*').eq('user_id', user.id),
-        supabase.from('fsrs_cards').select('*').eq('user_id', user.id)
+        supabase.from('fsrs_cards').select('*').eq('user_id', user.id),
+        supabase.from('user_mistakes').select('*').eq('user_id', user.id).order('created_at', { ascending: false })
       ]);
 
       if (pErr) console.error("Error fetching profiles:", pErr);
@@ -317,6 +353,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       if (sErr) console.error("Error fetching sessions:", sErr);
       if (vErr) console.error("Error fetching vocabulary:", vErr);
       if (fErr) console.error("Error fetching FSRS cards:", fErr);
+      if (mErr) console.error("Error fetching mistakes:", mErr);
 
       if (pData) {
         set({
@@ -397,6 +434,22 @@ export const useAppStore = create<AppState>()((set, get) => ({
         })
       }
 
+      if (mData) {
+        set({
+           mistakes: mData.map((m: any) => ({
+             id: m.id,
+             errorType: m.error_type,
+             originalText: m.original_text,
+             suggestion: m.suggestion,
+             context: m.context,
+             status: m.status,
+             createdAt: m.created_at,
+             fixedAt: m.fixed_at,
+             avoidanceCount: m.avoidance_count
+           }))
+        })
+      }
+
       set({ isHydrated: true });
     } catch (e) {
       console.error("Hydration failed", e);
@@ -451,6 +504,94 @@ export const useAppStore = create<AppState>()((set, get) => ({
         xp_earned: session.xpEarned,
         created_at: session.createdAt
       });
+    }
+  },
+
+  addMistakes: async (mistakesData) => {
+    const state = get();
+    const newMistakes: UserMistake[] = mistakesData.map((m, i) => ({
+      ...m,
+      id: `mistake-${Date.now()}-${i}`,
+      status: "active",
+      avoidanceCount: 0,
+      createdAt: new Date().toISOString()
+    }));
+
+    set({ mistakes: [...newMistakes, ...state.mistakes] });
+    
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from('user_mistakes').insert(newMistakes.map(m => ({
+        id: m.id,
+        user_id: user.id,
+        error_type: m.errorType,
+        original_text: m.originalText,
+        suggestion: m.suggestion,
+        context: m.context,
+        status: m.status,
+        avoidance_count: 0,
+        created_at: m.createdAt
+      })));
+    }
+  },
+
+  markMistakesAvoided: async (ids) => {
+    if (!ids || ids.length === 0) return;
+    const state = get();
+    const now = new Date().toISOString();
+    let updatedDbList: any[] = [];
+    
+    const newMistakes: UserMistake[] = state.mistakes.map(m => {
+      if (ids.includes(m.id) && m.status === 'active') {
+        const newCount = m.avoidanceCount + 1;
+        const isNowFixed = newCount >= 3;
+        updatedDbList.push({ id: m.id, avoidance_count: newCount, status: isNowFixed ? 'fixed' : 'active', fixed_at: isNowFixed ? now : null });
+        return {
+          ...m,
+          avoidanceCount: newCount,
+          status: isNowFixed ? "fixed" : "active",
+          fixedAt: isNowFixed ? now : undefined
+        };
+      }
+      return m;
+    });
+
+    set({ mistakes: newMistakes });
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      for (const update of updatedDbList) {
+        const payload: any = { avoidance_count: update.avoidance_count };
+        if (update.status === 'fixed') {
+          payload.status = 'fixed';
+          payload.fixed_at = update.fixed_at;
+        }
+        await supabase.from('user_mistakes').update(payload).eq('id', update.id);
+      }
+    }
+  },
+
+  markMistakesRepeated: async (ids) => {
+    if (!ids || ids.length === 0) return;
+    const state = get();
+    
+    const newMistakes: UserMistake[] = state.mistakes.map(m => {
+      if (ids.includes(m.id) && m.status === 'active') {
+        return { ...m, avoidanceCount: 0 };
+      }
+      return m;
+    });
+
+    set({ mistakes: newMistakes });
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      for (const id of ids) {
+        await supabase.from('user_mistakes').update({ avoidance_count: 0 }).eq('id', id);
+      }
     }
   },
 

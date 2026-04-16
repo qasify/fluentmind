@@ -17,7 +17,7 @@ const stagger: Variants = {
 export default function ProgressPage() {
   const {
     totalXp, currentLevel, currentLevelTitle, currentStreak, longestStreak,
-    sessions, vocabularyBank, badges, profile
+    sessions, vocabularyBank, badges, profile, mistakes
   } = useAppStore();
 
   // Calculate averages from sessions
@@ -62,6 +62,9 @@ export default function ProgressPage() {
   const progressToNext = nextLevel.xp > prevLevel.xp
     ? ((totalXp - prevLevel.xp) / (nextLevel.xp - prevLevel.xp)) * 100
     : 100;
+
+  const activeMistakes = mistakes.filter(m => m.status === 'active');
+  const fixedMistakes = mistakes.filter(m => m.status === 'fixed');
 
   return (
     <div className="page-container fade-in">
@@ -174,6 +177,56 @@ export default function ProgressPage() {
           )}
         </div>
       </div>
+
+      {/* Persistent Mistakes Ledger */}
+      {(activeMistakes.length > 0 || fixedMistakes.length > 0) && (
+        <div className="card p-6 mb-8 border-[rgba(244,63,94,0.1)]">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="heading-5 flex items-center gap-2"><span>🎯</span> Weakness Tracking</h3>
+              <p className="text-sm text-[#a0a0b5] mt-1">Mistakes the AI is actively monitoring in your sessions</p>
+            </div>
+            <div className="text-sm font-mono text-tertiary">
+              <span className="text-warning-400">{activeMistakes.length} Active</span>
+              <span className="opacity-50 mx-2">|</span>
+              <span className="text-success-400">{fixedMistakes.length} Fixed</span>
+            </div>
+          </div>
+          
+          <div className="grid gap-3 lg:grid-cols-2">
+            {activeMistakes.map(mistake => (
+              <div key={mistake.id} className="p-4 bg-[rgba(244,63,94,0.03)] border border-[rgba(244,63,94,0.1)] rounded-xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-2 opacity-30 text-danger-400">⚠️</div>
+                <div className="text-[10px] uppercase font-bold text-danger-400 tracking-wider mb-2 flex items-center justify-between">
+                  <span>{mistake.errorType.replace("_", " ")}</span>
+                  <div className="flex gap-1 pr-6" title={`Avoided ${mistake.avoidanceCount || 0}/3 times to fix`}>
+                    {[1, 2, 3].map(step => (
+                      <div key={step} className={`w-3 h-1 rounded-full ${step <= (mistake.avoidanceCount || 0) ? "bg-success-400" : "bg-danger-400/20"}`} />
+                    ))}
+                  </div>
+                </div>
+                
+                <div className="flex flex-col gap-2">
+                  <div className="text-sm">
+                    <span className="text-[#a0a0b5] mr-2">Rule/Mistake:</span>
+                    <span className="line-through decoration-danger-400/50 text-[#c8c8d5]">&quot;{mistake.originalText}&quot;</span>
+                  </div>
+                  <div className="text-sm font-medium">
+                    <span className="text-success-400 mr-2">How to Fix:</span>
+                    <span className="text-[#f0f0f5]">&quot;{mistake.suggestion}&quot;</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+            
+            {activeMistakes.length === 0 && fixedMistakes.length > 0 && (
+              <div className="col-span-2 text-center py-6 text-success-400">
+                🎉 Amazing job! You have successfully fixed all tracked mistakes.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Vocabulary Stats */}
       <div className="card p-6 mb-8">

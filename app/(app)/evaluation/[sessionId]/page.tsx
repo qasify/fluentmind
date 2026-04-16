@@ -4,6 +4,7 @@ import { useState, use } from "react";
 import Link from "next/link";
 import { useAppStore, type SessionAnalysis } from "@/lib/store";
 import AudioPlayer from "@/components/ui/AudioPlayer";
+import { useTTS } from "@/hooks/useTTS";
 
 type Dimension = "clarity" | "vocabulary" | "grammar" | "structure" | "fluency" | "confidence";
 
@@ -75,7 +76,10 @@ export default function EvaluationPage({
 }) {
   const { sessionId } = use(params);
   const [activeDimension, setActiveDimension] = useState<Dimension>("clarity");
-  const { sessions, addVocabWord } = useAppStore();
+  const [activeTab, setActiveTab] = useState<"transcript" | "c1" | "native">("transcript");
+  const [addedWords, setAddedWords] = useState<Set<string>>(new Set());
+  const { sessions, addVocabWord, vocabularyBank } = useAppStore();
+  const { speak, isPlaying, currentText } = useTTS();
 
   const session = sessions.find((s) => s.id === sessionId);
   const analysis: SessionAnalysis | null = session?.analysis || null;
@@ -174,7 +178,7 @@ export default function EvaluationPage({
         {/* Vocabulary: Suggestions */}
         {activeDimension === "vocabulary" && analysis.vocabulary.basicWordsFlagged.length > 0 && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-4">
-            <h4 className="heading-5 mb-2 text-primary-400">Word Upgrades</h4>
+            <h4 className="heading-5 mb-2 text-primary-400">Word Upgrades — C1/C2 Native Alternatives</h4>
             {analysis.vocabulary.basicWordsFlagged.map((item, i) => (
               <div key={i} className="p-5 bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.06)] rounded-xl">
                 <div className="flex items-center gap-3 mb-4 text-base">
@@ -186,41 +190,94 @@ export default function EvaluationPage({
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {item.suggestions.map((s, j) => (
-                    <div key={j} className="flex flex-col p-4 bg-background-primary border border-[rgba(255,255,255,0.06)] rounded-xl group relative overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-primary opacity-0 group-hover:opacity-5 transition-opacity" />
-                      <div className="flex justify-between items-start mb-2 relative z-10">
-                        <div>
-                          <div className="font-bold text-primary-400 mb-1 flex items-center gap-2">
-                            {s.word}
-                            <span className="text-[10px] uppercase tracking-wider text-tertiary border border-[rgba(255,255,255,0.1)] px-1.5 py-0.5 rounded">{s.register}</span>
+                  {item.suggestions.map((s, j) => {
+                    const wordKey = `${s.word}-${i}-${j}`;
+                    const isAlreadyInBank = vocabularyBank.some((w) => w.word.toLowerCase() === s.word.toLowerCase());
+                    const justAdded = addedWords.has(wordKey);
+                    const isAdded = isAlreadyInBank || justAdded;
+
+                    return (
+                      <div key={j} className="flex flex-col p-4 bg-background-primary border border-[rgba(255,255,255,0.06)] rounded-xl group relative overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-primary opacity-0 group-hover:opacity-5 transition-opacity" />
+                        <div className="flex justify-between items-start mb-2 relative z-10">
+                          <div>
+                            <div className="font-bold text-primary-400 mb-1 flex items-center gap-2">
+                              {s.word}
+                              <span className="text-[10px] uppercase tracking-wider text-tertiary border border-[rgba(255,255,255,0.1)] px-1.5 py-0.5 rounded">{s.register}</span>
+                            </div>
+                            {(s as { pronunciation?: string }).pronunciation && (
+                              <div className="text-[11px] text-[#6b6b80] font-mono mt-0.5 flex items-center gap-2">
+                                🇺🇸 {(s as { pronunciation?: string }).pronunciation}
+                                <button
+                                  onClick={() => speak(s.word)}
+                                  className={`p-1 rounded-full text-xs hover:bg-[rgba(255,255,255,0.1)] transition-colors ${isPlaying && currentText === s.word ? "text-primary-400" : ""}`}
+                                  title="Listen to pronunciation"
+                                >
+                                  {isPlaying && currentText === s.word ? "⏸" : "🔊"}
+                                </button>
+                              </div>
+                            )}
                           </div>
+                          <button
+                            disabled={isAdded}
+                            className={`btn btn-sm text-xs px-3 shadow-none min-w-[90px] transition-all duration-300 ${isAdded
+                              ? "bg-success-400/15 text-success-400 border border-success-400/25 cursor-default"
+                              : "bg-primary-500/10 text-primary-400 hover:bg-primary-500 hover:text-white border border-primary-500/20"
+                              }`}
+                            onClick={() => {
+                              if (isAdded) return;
+                              addVocabWord({
+                                id: `vocab-${Date.now()}-${j}`,
+                                word: s.word,
+                                definition: s.definition,
+                                register: s.register,
+                                context: item.context,
+                                cefrLevel: "C1",
+                                masteryLevel: "new",
+                                nextReviewDate: new Date().toISOString(),
+                                reps: 0,
+                                addedAt: new Date().toISOString(),
+                              });
+                              setAddedWords((prev) => new Set(prev).add(wordKey));
+                            }}
+                          >
+                            {isAdded ? "✓ Added" : "+ Bank"}
+                          </button>
                         </div>
-                        <button
-                          className="btn btn-sm bg-primary-500/10 text-primary-400 hover:bg-primary-500 hover:text-white border border-primary-500/20 text-xs px-3 shadow-none min-w-[90px]"
-                          onClick={() => {
-                            addVocabWord({
-                              id: `vocab-${Date.now()}-${j}`,
-                              word: s.word,
-                              definition: s.definition,
-                              register: s.register,
-                              context: item.context,
-                              cefrLevel: analysis.vocabulary.cefrLevel,
-                              masteryLevel: "new",
-                              nextReviewDate: new Date().toISOString(),
-                              reps: 0,
-                              addedAt: new Date().toISOString(),
-                            });
-                          }}
-                        >
-                          + Bank
-                        </button>
+                        <div className="text-sm text-[#a0a0b5] leading-relaxed relative z-10">
+                          {s.definition}
+                        </div>
                       </div>
-                      <div className="text-sm text-[#a0a0b5] leading-relaxed relative z-10">
-                        {s.definition}
-                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Phrase Upgrades */}
+        {activeDimension === "vocabulary" && analysis.vocabulary.phraseUpgrades?.length > 0 && (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-4 mt-8">
+            <h4 className="heading-5 mb-2 text-primary-400">Phrase Upgrades & Chunking</h4>
+            {analysis.vocabulary.phraseUpgrades.map((item, i) => (
+              <div key={i} className="p-5 bg-[rgba(139,92,246,0.04)] border border-[rgba(139,92,246,0.15)] rounded-xl relative overflow-hidden group">
+                <div className="flex flex-col md:flex-row gap-4 mb-3">
+                  <div className="flex-1 bg-background-primary p-3 rounded-lg border border-[rgba(255,255,255,0.04)]">
+                    <div className="text-xs text-danger-400 font-bold uppercase tracking-wider mb-1">You Said:</div>
+                    <div className="text-sm line-through text-[#6b6b80]">&quot;{item.original}&quot;</div>
+                  </div>
+                  <div className="flex items-center justify-center text-tertiary hidden md:flex">➜</div>
+                  <div className="flex-1 bg-[rgba(16,185,129,0.05)] p-3 rounded-lg border border-[rgba(16,185,129,0.1)]">
+                    <div className="text-xs text-success-400 font-bold uppercase tracking-wider mb-1 flex justify-between items-center">
+                      <span>Better phrasing:</span>
+                      <button onClick={() => speak(item.suggestion)} className={`hover:scale-110 transition-transform ${isPlaying && currentText === item.suggestion ? "text-primary-400" : ""}`}>🔊</button>
                     </div>
-                  ))}
+                    <div className="text-sm font-medium text-[#f0f0f5]">&quot;{item.suggestion}&quot;</div>
+                  </div>
+                </div>
+                <div className="text-sm text-[#a0a0b5] border-t border-[rgba(255,255,255,0.04)] pt-3">
+                  <strong className="text-primary-400">Why?</strong> {item.explanation}
                 </div>
               </div>
             ))}
@@ -250,36 +307,55 @@ export default function EvaluationPage({
         {activeDimension === "structure" && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
             <h4 className="heading-5 mb-4 text-primary-400">
-              Framework: <span className="text-[#f0f0f5]">
+              Framework Detected: <span className="text-[#f0f0f5]">
                 {analysis.structure.frameworkDetected !== "none"
                   ? analysis.structure.frameworkDetected
-                  : analysis.structure.suggestedFramework + " (Suggested)"}
+                  : "None"}
               </span>
             </h4>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-6">
-              {analysis.structure.frameworkAdherence.segments.map((seg, i) => (
-                <div
-                  key={i}
-                  className={`flex items-center gap-3 p-4 rounded-xl border ${seg.present
-                    ? "bg-[rgba(16,185,129,0.06)] border-[rgba(16,185,129,0.15)]"
-                    : "bg-[rgba(244,63,94,0.04)] border-[rgba(244,63,94,0.1)] opacity-70"
-                    }`}
-                >
-                  <div className={`p-1.5 rounded-full ${seg.present ? "bg-success-400/20 text-success-400" : "bg-danger-400/20 text-danger-400"}`}>
-                    {seg.present ? "✓" : "✗"}
+            {analysis.structure.frameworkAdherence.segments.length > 0 && (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-6">
+                {analysis.structure.frameworkAdherence.segments.map((seg, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-center gap-3 p-4 rounded-xl border ${seg.present
+                      ? "bg-[rgba(16,185,129,0.06)] border-[rgba(16,185,129,0.15)]"
+                      : "bg-[rgba(244,63,94,0.04)] border-[rgba(244,63,94,0.1)] opacity-70"
+                      }`}
+                  >
+                    <div className={`p-1.5 rounded-full ${seg.present ? "bg-success-400/20 text-success-400" : "bg-danger-400/20 text-danger-400"}`}>
+                      {seg.present ? "✓" : "✗"}
+                    </div>
+                    <span className={`font-semibold ${seg.present ? "text-[#f0f0f5]" : "text-[#a0a0b5]"}`}>{seg.label}</span>
                   </div>
-                  <span className={`font-semibold ${seg.present ? "text-[#f0f0f5]" : "text-[#a0a0b5]"}`}>{seg.label}</span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             {analysis.structure.frameworkAdherence.missingElements.length > 0 && (
-              <div className="bg-[rgba(244,63,94,0.08)] text-danger-300 px-4 py-3 rounded-lg text-sm flex items-start gap-2">
+              <div className="bg-[rgba(244,63,94,0.08)] text-danger-300 px-4 py-3 rounded-lg text-sm flex items-start gap-2 mb-6">
                 <span className="mt-0.5">⚠️</span>
                 <div>
                   <span className="font-semibold block mb-1">Missing Elements:</span>
                   {analysis.structure.frameworkAdherence.missingElements.join(", ")}
+                </div>
+              </div>
+            )}
+
+            {/* Best Frameworks for this topic */}
+            {analysis.structure.bestFrameworks && analysis.structure.bestFrameworks.length > 0 && (
+              <div className="mt-2">
+                <h4 className="heading-5 mb-3 text-primary-400">💡 Best Frameworks for This Topic</h4>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {analysis.structure.bestFrameworks.map((fw, i) => (
+                    <div key={i} className="p-4 bg-[rgba(6,182,212,0.04)] border border-[rgba(6,182,212,0.12)] rounded-xl">
+                      <div className="font-bold text-[#f0f0f5] mb-1 flex items-center gap-2">
+                        <span className="text-primary-400 text-lg">⬡</span> {fw.name}
+                      </div>
+                      <div className="text-sm text-[#a0a0b5] leading-relaxed">{fw.fit}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -359,8 +435,60 @@ export default function EvaluationPage({
               durationOverride={session.audioMetadata?.totalDurationSeconds || 0}
             />
           </div>
-          <div className="text-secondary text-sm italic border-l-2 border-primary-500/50 pl-4 py-2">
-            &quot;{session.transcript}&quot;
+
+          <div className="flex bg-[rgba(255,255,255,0.06)] p-1 rounded-xl w-fit mb-4 overflow-x-auto max-w-full">
+            <button
+              onClick={() => setActiveTab("transcript")}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 whitespace-nowrap ${activeTab === "transcript" ? "bg-background-elevated text-primary-400 shadow-sm" : "text-[#a0a0b5] hover:text-[#f0f0f5]"}`}
+            >
+              🗣️ Your Original
+            </button>
+            {analysis.overall?.upgradedTranscript && analysis.overall.upgradedTranscript !== "(Connect Gemini API for upgraded transcript)" && (
+              <button
+                onClick={() => setActiveTab("c1")}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 whitespace-nowrap ${activeTab === "c1" ? "bg-background-elevated text-primary-400 shadow-sm" : "text-[#a0a0b5] hover:text-[#f0f0f5]"}`}
+              >
+                ✨ C1 Upgrade
+              </button>
+            )}
+            {analysis.overall?.nativeVersion && analysis.overall.nativeVersion !== "(Connect Gemini API for native speaker version)" && (
+              <button
+                onClick={() => setActiveTab("native")}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200 whitespace-nowrap ${activeTab === "native" ? "bg-background-elevated text-primary-400 shadow-sm" : "text-[#a0a0b5] hover:text-[#f0f0f5]"}`}
+              >
+                🇺🇸 Native Speaker
+              </button>
+            )}
+          </div>
+
+          <div className="relative">
+            {activeTab === "transcript" && (
+              <div className="text-secondary text-sm italic border-l-2 border-primary-500/50 pl-4 py-2 animate-in fade-in duration-300">
+                &quot;{session.transcript}&quot;
+              </div>
+            )}
+            {activeTab === "c1" && analysis.overall?.upgradedTranscript && (
+              <div className="text-base text-[#c8c8d5] bg-[rgba(139,92,246,0.04)] border border-[rgba(139,92,246,0.1)] p-5 rounded-xl leading-[1.8] animate-in fade-in duration-300">
+                <button
+                  onClick={() => speak(analysis.overall.upgradedTranscript)}
+                  className={`absolute top-1 right-1 px-1 rounded-full bg-[rgba(255,255,255,0.05)] hover:bg-[rgba(255,255,255,0.1)] transition-colors ${isPlaying && currentText === analysis.overall.upgradedTranscript ? "text-primary-400" : ""}`}
+                >
+                  🔊
+                </button>
+                &quot;{analysis.overall.upgradedTranscript}&quot;
+              </div>
+            )}
+            {activeTab === "native" && analysis.overall?.nativeVersion && (
+              <div className="text-base text-[#c8c8d5] bg-[rgba(16,185,129,0.04)] border border-[rgba(16,185,129,0.1)] p-5 rounded-xl leading-[1.8] italic animate-in fade-in duration-300">
+                <button
+                  onClick={() => speak(analysis.overall.nativeVersion)}
+                  className={`absolute top-1 right-1 px-1 rounded-full bg-[rgba(255,255,255,0.05)] hover:bg-[rgba(255,255,255,0.1)] transition-colors ${isPlaying && currentText === analysis.overall.nativeVersion ? "text-primary-400" : ""}`}
+                >
+                  🔊
+                </button>
+                &quot;{analysis.overall.nativeVersion}&quot;
+              </div>
+            )}
           </div>
         </div>
       ) : (

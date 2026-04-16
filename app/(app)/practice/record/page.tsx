@@ -82,7 +82,7 @@ const TOPIC_CATEGORIES = [
 function RecordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { addSession, addXp, updateStreak, checkAndUnlockBadges } = useAppStore();
+  const { addSession, addXp, updateStreak, checkAndUnlockBadges, sessions, mistakes, addMistakes, markMistakesAvoided, markMistakesRepeated } = useAppStore();
 
   // Topic picker state
   const [showTopicPicker, setShowTopicPicker] = useState(false);
@@ -342,7 +342,22 @@ function RecordContent() {
         }
       }
 
-      // 3. Send raw audio to Gemini for transcription + analysis
+      // 3. Generate Ledger Context from persistent Mistakes Ledger
+      let pastContext = "No past mistakes recorded yet.";
+      const activeMistakes = mistakes.filter(m => m.status === "active");
+      
+      if (activeMistakes.length > 0) {
+        pastContext = `
+ACTIVE MISTAKES LEDGER (The user is actively working on these):
+${activeMistakes.map(m => `- ID: [${m.id}] | Type: ${m.errorType} | Original: "${m.originalText}" -> Suggestion: "${m.suggestion}"`).join("\n")}
+
+CRITICAL INSTRUCTIONS FOR YOU:
+1. Check if the user successfully fixed these specific mistakes or followed the action steps. If they DID improve, list the IDs of the fixed mistakes in 'mistakesFixed'.
+2. If they repeated these mistakes, point it out.
+`;
+      }
+
+      // 4. Send raw audio to Gemini for transcription + analysis
       const formData = new FormData();
       formData.append("audio", audioBlob, `${sessionId}.webm`);
       formData.append("topic", topic);
@@ -350,6 +365,7 @@ function RecordContent() {
       formData.append("duration", String(secondsElapsed));
       formData.append("wpm", String(Math.round(wpm)));
       formData.append("pauseCount", String(pauseCount));
+      formData.append("pastContext", pastContext);
 
       const response = await fetch("/api/ai/analyze", {
         method: "POST",
@@ -359,6 +375,22 @@ function RecordContent() {
       if (!response.ok) throw new Error("Analysis failed");
       
       const analysisData = await response.json();
+
+      // Fix old mistakes if AI says so
+      // Avoided old mistakes
+      if (analysisData.analysis?.overall?.mistakesAvoided?.length > 0) {
+        await markMistakesAvoided(analysisData.analysis.overall.mistakesAvoided);
+      }
+
+      // Repeated old mistakes
+      if (analysisData.analysis?.overall?.mistakesRepeated?.length > 0) {
+        await markMistakesRepeated(analysisData.analysis.overall.mistakesRepeated);
+      }
+
+      // Add new mistakes to tracker
+      if (analysisData.analysis?.overall?.newMistakesToTrack?.length > 0) {
+        await addMistakes(analysisData.analysis.overall.newMistakesToTrack);
+      }
 
       // Use Gemini's transcript if available, otherwise fall back to browser transcript
       const finalTranscript = analysisData.transcript || browserTranscript;

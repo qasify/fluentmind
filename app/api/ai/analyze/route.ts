@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
     const duration = Number(formData.get("duration") || 0);
     const wpm = Number(formData.get("wpm") || 0);
     const pauseCount = Number(formData.get("pauseCount") || 0);
+    const pastContext = (formData.get("pastContext") as string) || "";
 
     if (!audioFile || audioFile.size < 1000) {
       return NextResponse.json(
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await audioFile.arrayBuffer();
     const base64Audio = Buffer.from(arrayBuffer).toString("base64");
 
-    const prompt = buildAnalysisPrompt({ topic, category, framework, duration, wpm, pauseCount });
+    const prompt = buildAnalysisPrompt({ topic, category, framework, duration, wpm, pauseCount, pastContext });
 
     if (!GEMINI_API_KEY) {
       // No API key — return mock data
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
         generationConfig: {
           temperature: 0.3,
           topP: 0.8,
-          maxOutputTokens: 4096,
+          maxOutputTokens: 8192,
           responseMimeType: "application/json",
         },
       }),
@@ -116,20 +117,40 @@ function buildAnalysisPrompt(params: {
   duration: number;
   wpm: number;
   pauseCount: number;
+  pastContext: string;
 }) {
-  return `You are FluentMind AI, an expert English speaking coach and linguist.
+  return `You are FluentMind AI, a strict but encouraging IELTS / CEFR English speaking examiner and linguist.
 You will receive an audio recording of a speaker practicing English.
 
 TASK:
-1. First, TRANSCRIBE the audio accurately with proper punctuation and capitalization.
-2. Then, ANALYZE the speech across all six dimensions below.
+1. TRANSCRIBE the audio accurately with proper punctuation and capitalization.
+2. ANALYZE the speech across all six dimensions using STRICT, REALISTIC scoring.
+3. Provide a NATIVE SPEAKER VERSION and an UPGRADED version of the speaker's transcript.
+4. Review the strictly provided PAST CONTEXT (their previous mistakes). You MUST explicitly point out if they fixed these mistakes or repeated them in the 'overall.feedback' and 'grammar.feedback'.
 
 TOPIC: "${params.topic}"
 CATEGORY: ${params.category}
-SUGGESTED FRAMEWORK: ${params.framework}
 SPEAKING DURATION: ${params.duration} seconds
 ESTIMATED WPM: ${params.wpm}
 PAUSE COUNT: ${params.pauseCount}
+
+PAST CONTEXT & ERRORS TO TRACK:
+${params.pastContext ? params.pastContext : "First session or no outstanding errors tracked yet."}
+
+STRICT SCORING GUIDELINES (follow these or the scores are worthless):
+- 90-100: Exceptional. Near-native fluency, zero errors, rich vocabulary, perfect structure. Almost nobody gets this on a casual recording.
+- 75-89: Strong. Minor issues but clearly competent. Good vocabulary and structure.
+- 60-74: Developing. Noticeable errors, basic vocabulary, incomplete structure. This is where most intermediate learners land.
+- 40-59: Weak. Frequent errors, very basic vocabulary, poor structure, doesn't fully address the topic.
+- 0-39: Very weak. Barely comprehensible, fails to address the topic.
+
+SCORING FACTORS (weight these heavily):
+- Did the speaker FULLY ADDRESS the topic? A one-sentence answer to a question that expects a paragraph = max 40 overall.
+- DEPTH and DETAIL: Did they provide reasons, examples, and elaboration?   
+- RELEVANCE: Was the response directly about the topic or did they go off-track?
+- LENGTH: For a 2-minute response, expect 200-300 words. Significantly less = penalty.
+- GRAMMAR ACCURACY: Count actual errors. More than 3 notable errors = max 70 grammar score.
+- VOCABULARY RANGE: Using only basic A2/B1 words throughout = max 55 vocab score.
 
 Return STRICTLY this JSON structure (no markdown, no extra text):
 
@@ -144,15 +165,27 @@ Return STRICTLY this JSON structure (no markdown, no extra text):
     },
     "vocabulary": {
       "score": <0-100>,
-      "lexicalDiversity": <float>,
+      "lexicalDiversity": <float 0-1>,
       "cefrLevel": "<A1-C2>",
       "basicWordsFlagged": [
         {
-          "original": "<string>",
-          "context": "<surrounding sentence>",
+          "original": "<basic word the speaker used>",
+          "context": "<the sentence where it was used>",
           "suggestions": [
-            {"word": "<string>", "register": "<casual|professional|academic>", "definition": "<string>"}
+            {
+              "word": "<C1/C2 level word that native Americans actually use>",
+              "register": "<casual|professional|academic>",
+              "definition": "<clear definition>",
+              "pronunciation": "<American IPA pronunciation, e.g. /ɪˈlæb.ə.reɪt/>"
+            }
           ]
+        }
+      ],
+      "phraseUpgrades": [
+        {
+          "original": "<an awkward or non-native phrase the user said>",
+          "suggestion": "<the natural, idiomatic way a native speaker would say it, or instruction on where to pause for impact>",
+          "explanation": "<brief explanation why the suggestion is better>"
         }
       ],
       "advancedWordsUsed": ["<string>"],
@@ -162,8 +195,8 @@ Return STRICTLY this JSON structure (no markdown, no extra text):
       "score": <0-100>,
       "errors": [
         {
-          "originalText": "<string>",
-          "correctedText": "<string>",
+          "originalText": "<exact text from transcript>",
+          "correctedText": "<corrected version>",
           "errorType": "<article|tense|agreement|preposition|word_order|other>",
           "explanation": "<string>"
         }
@@ -172,11 +205,14 @@ Return STRICTLY this JSON structure (no markdown, no extra text):
     },
     "structure": {
       "score": <0-100>,
-      "frameworkDetected": "<PREP|STAR|AAA|PEE|none>",
+      "frameworkDetected": "<PREP|STAR|PEE|OREO|Problem-Solution|Chronological|none>",
       "frameworkAdherence": {
         "segments": [{"label": "<string>", "present": <bool>}],
         "missingElements": ["<string>"]
       },
+      "bestFrameworks": [
+        {"name": "<framework name>", "fit": "<why this framework fits this topic, 1 sentence>"}
+      ],
       "coherenceScore": <0-100>,
       "transitionWordsUsed": ["<string>"],
       "feedback": "<2-3 sentences>",
@@ -197,84 +233,107 @@ Return STRICTLY this JSON structure (no markdown, no extra text):
     },
     "overall": {
       "score": <0-100>,
-      "summary": "<3-4 sentence encouraging summary>",
+      "summary": "<3-4 sentence summary. Be honest about weaknesses.>",
       "topStrength": "<string>",
       "topWeakness": "<string>",
-      "actionableTip": "<ONE specific thing to practice next>"
+      "actionableTip": "<ONE specific, actionable thing to practice next>",
+      "nativeVersion": "<How a native American English speaker would answer the same topic naturally. Write a full 150-200 word response in a natural, conversational-but-polished style with C1 vocabulary and idiomatic expressions.>",
+      "upgradedTranscript": "<Take the speaker's EXACT story/content and rewrite it in fluent, natural C1-level English. Keep their ideas and narrative but upgrade the vocabulary, grammar, and flow to sound like a native speaker. Same story, better English.>",
+      "newMistakesToTrack": [
+        {
+          "originalText": "<exact text to fix>",
+          "suggestion": "<better way>",
+          "errorType": "<grammar|vocabulary|phrase|action_step>",
+          "context": "<context context here>"
+        }
+      ],
+      "mistakesAvoided": ["<string: id of the mistake from ACTIVE MISTAKES LEDGER that the user successfully avoided or didn't make>"],
+      "mistakesRepeated": ["<string: id of the mistake from ACTIVE MISTAKES LEDGER that the user repeated>"]
     }
   }
 }
 
-RULES:
-1. TRANSCRIBE the audio first — include exactly what was said, with proper punctuation and capitalization.
-2. Be encouraging, honest, and specific in feedback.
-3. Scores must reflect actual performance — 90+ means genuinely excellent.
-4. Detect filler words ("um", "uh", "like", "you know", etc.) from the AUDIO, not just text patterns.
-5. Listen for pauses, hesitations, and self-corrections in the audio.
-6. Include exact original and corrected text for grammar errors.
-7. Evaluate which speaking framework was used and what's missing.
-8. Return ONLY valid JSON, no markdown.`;
+CRITICAL RULES:
+1. TRANSCRIBE accurately — include exactly what was said with proper punctuation.
+2. SCORE STRICTLY using the guidelines above. Do NOT inflate scores. A short, basic answer should score 40-55 overall.
+3. For vocabulary suggestions, you MUST flag AT LEAST 5 basic words and provide C1/C2 alternatives that native American English speakers actually use. Explain the nuances of American slang or idioms when applicable. Include American IPA pronunciation. If the audio is very short, find at least 2.
+4. For "phraseUpgrades", provide UNLIMITED upgrades. Act like a REAL teacher addressing a layman: teach them how to use descriptive adjectives/adverbs, how to structure their thoughts, or how to connect sentences naturally (e.g., instead of two short sentences, use a connector like 'Hoping to light up the garden, he visited the local market...'). Explain WHY the upgrade works.
+5. Suggest 3-4 DIFFERENT frameworks that would work well for this topic (e.g., PREP, STAR, PEE, OREO, Problem-Solution). Don't just default to PREP.
+6. The "nativeVersion" should sound like a real American adult speaking naturally — use contractions, idioms, and natural rhythm. Not robotic or overly formal.
+7. The "upgradedTranscript" must preserve the speaker's original ideas and story but upgrade the language to C1 level. Same content, better delivery.
+8. Detect filler words from the AUDIO (um, uh, like, you know, basically, etc.). Listen for pauses, hesitations, mumbling, and self-corrections.
+9. PROGRESS TRACKING: Read the "ACTIVE MISTAKES LEDGER". If they repeated a past mistake, politely point it out in their evaluation and return its ID in "mistakesRepeated". If they had the opportunity to make the mistake but successfully avoided it (or generally demonstrated mastery of that rule), return its ID in "mistakesAvoided".
+10. RECORD NEW MISTAKES: Explicitly list any new major recurring mistakes in "newMistakesToTrack". CRITICAL: DO NOT track silly, isolated pedantic swaps like 'game' -> 'games' or 'ideal weekend' -> 'an ideal weekend'. Track the UNDERLYING RULE as a teacher would. For example, originalText should be "Subject-Verb Agreement (s/es on 3rd person)" or "Missing Articles (a/an/the)". Make the tracking about learning a rule, not fixing a single string. Also ALWAYS include the "actionableTip" as an 'action_step' type so we track if they apply it next time.
+11. Return ONLY valid JSON, no markdown.`;
 }
 
 // ---- Mock Analysis (when no API key) ----
 function getMockAnalysis(duration: number, wpm: number) {
   return {
     clarity: {
-      score: 72,
-      fillerWords: [{ word: "um", count: 2 }],
-      totalFillers: 2,
+      score: 55,
+      fillerWords: [{ word: "um", count: 3 }, { word: "like", count: 2 }],
+      totalFillers: 5,
       feedback:
-        "Your speech was mostly clear but had a few filler words. Try pausing silently instead — silence shows confidence.",
+        "You used several filler words which break the flow of your speech. Practice pausing silently instead of saying 'um' — confident speakers embrace silence.",
     },
     vocabulary: {
-      score: 65,
-      lexicalDiversity: 0.6,
+      score: 45,
+      lexicalDiversity: 0.45,
       cefrLevel: "B1",
       basicWordsFlagged: [],
       advancedWordsUsed: [],
       feedback:
-        "Your vocabulary is functional. Keep expanding by visiting your word bank after each session.",
+        "Your vocabulary is mostly basic (A2-B1 range). To improve, replace common words like 'good', 'nice', 'thing' with C1 alternatives. Visit your word bank after each session.",
     },
     grammar: {
-      score: 70,
+      score: 55,
       errors: [],
       feedback:
-        "Connect your Gemini API key for detailed grammar analysis. We'll catch missing articles, tense errors, and more.",
+        "Connect your Gemini API key for detailed grammar analysis. We'll identify article errors, tense inconsistencies, and subject-verb agreement issues.",
     },
     structure: {
-      score: 55,
+      score: 35,
       frameworkDetected: "none",
       frameworkAdherence: {
         segments: [],
-        missingElements: ["Point", "Reason", "Example"],
+        missingElements: ["Clear Point", "Supporting Reason", "Specific Example", "Conclusion"],
       },
-      coherenceScore: 60,
+      bestFrameworks: [
+        { name: "PREP", fit: "Great for opinion questions — Point, Reason, Example, Point." },
+        { name: "STAR", fit: "Perfect for experience-based topics — Situation, Task, Action, Result." },
+        { name: "PEE", fit: "Ideal for argument topics — Point, Evidence, Explanation." },
+      ],
+      coherenceScore: 40,
       transitionWordsUsed: [],
       feedback:
-        "Try using the PREP framework: make a Point, give a Reason, add an Example, then restate your Point.",
+        "Your response lacked clear structure. Try organizing your thoughts using a framework before speaking.",
       suggestedFramework: "PREP",
     },
     fluency: {
-      score: Math.min(100, Math.round((wpm || 120) / 1.5)),
-      wordsPerMinute: wpm || 120,
-      selfCorrectionCount: 0,
-      ieltsBandEstimate: 6.0,
-      feedback: `You spoke at approximately ${wpm || 120} words per minute. Native speakers average 120-150 WPM.`,
+      score: Math.min(100, Math.round((wpm || 100) / 1.5)),
+      wordsPerMinute: wpm || 100,
+      selfCorrectionCount: 2,
+      ieltsBandEstimate: 5.5,
+      feedback: `You spoke at approximately ${wpm || 100} words per minute. Native speakers average 120-150 WPM. Focus on maintaining a steady rhythm without rushing.`,
     },
     confidence: {
-      score: 68,
-      hedgingPhrases: [],
+      score: 50,
+      hedgingPhrases: ["I think maybe", "kind of", "not sure but"],
       assertivePhrases: [],
       feedback:
-        "Connect your Gemini API key for confidence analysis — we'll detect hedging language and assertive speaking patterns.",
+        "Your speech contained several hedging phrases that undermine your authority. Replace 'I think maybe' with 'I believe' or 'In my view'.",
     },
     overall: {
-      score: 65,
-      summary: `You spoke for ${duration} seconds. Great effort! Keep practicing daily to build consistency and fluency.`,
-      topStrength: "Willingness to practice",
-      topWeakness: "Connect Gemini API for full analysis",
+      score: 45,
+      summary: `You spoke for ${duration} seconds but the response lacked depth and structure. To improve significantly, use a speaking framework, expand your answers with specific examples, and practice using C1-level vocabulary.`,
+      topStrength: "Willingness to practice and attempt the topic",
+      topWeakness: "Response too short and lacking in detail — needs more depth and structure",
       actionableTip:
-        "Record yourself daily for just 2 minutes. Consistency beats intensity.",
+        "Before speaking, take 5 seconds to mentally outline: 1) Your main point, 2) One reason why, 3) One specific example. This alone will boost your score by 15-20 points.",
+      nativeVersion: "(Connect Gemini API for native speaker version)",
+      upgradedTranscript: "(Connect Gemini API for upgraded transcript)",
     },
   };
 }
+
