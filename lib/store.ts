@@ -102,6 +102,28 @@ export interface SessionAnalysis {
   };
 }
 
+export interface CurriculumTask {
+  id: string;
+  dayNumber: number; // 1 to 7
+  title: string;
+  type: "assessment" | "speaking" | "conversation" | "vocabulary" | "grammar" | "homework";
+  description: string;
+  targetFocus?: string;
+  isCompleted: boolean;
+  completedAt?: string;
+  metadata?: any;
+}
+
+export interface Curriculum {
+  id: string;
+  startDate: string;
+  endDate: string;
+  focusAreas: string[];
+  tasks: CurriculumTask[];
+  status: "active" | "completed" | "abandoned";
+  createdAt: string;
+}
+
 export interface Session {
   id: string;
   type: "recording" | "conversation" | "exam";
@@ -270,6 +292,11 @@ interface AppState {
   addConversationMessage: (conversationId: string, role: "user" | "ai" | "system", text: string, audioUrl?: string, corrections?: ConversationMessageCorrection[]) => Promise<string>;
   endConversation: (conversationId: string) => Promise<void>;
   setActiveConversation: (id: string | null) => void;
+  // Curriculums
+  curriculums: Curriculum[];
+  activeCurriculum: Curriculum | null;
+  generateCurriculum: (tasks: CurriculumTask[], focusAreas: string[]) => Promise<void>;
+  markTaskCompleted: (curriculumId: string, taskId: string) => Promise<void>;
 }
 
 // ---- Level Thresholds ----
@@ -346,6 +373,15 @@ function computeFSRS(card: FSRSCard, rating: 1 | 2 | 3 | 4): FSRSCard {
   };
 }
 
+function isMissingCurriculumsTable(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybeError = error as { code?: string; message?: string; details?: string };
+  return maybeError.code === "42P01"
+    || maybeError.message?.includes("user_curriculums")
+    || maybeError.details?.includes("user_curriculums")
+    || JSON.stringify(error).includes("user_curriculums");
+}
+
 export const useAppStore = create<AppState>()((set, get) => ({
   isHydrated: false,
   profile: {
@@ -371,6 +407,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
   mistakes: [],
   conversations: [],
   activeConversation: null,
+  curriculums: [],
+  activeCurriculum: null,
 
   initializeStore: async () => {
     const supabase = createClient();
@@ -389,7 +427,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
         { data: vData, error: vErr }, 
         { data: fData, error: fErr }, 
         { data: mData, error: mErr },
-        convResponse
+        convResponse,
+        curriculumsResponse
       ] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
         supabase.from('user_progress').select('*').eq('id', user.id).single(),
@@ -400,7 +439,8 @@ export const useAppStore = create<AppState>()((set, get) => ({
         supabase.from('conversations').select(`
           id, scenario_id, scenario_title, status, created_at, updated_at,
           conversation_messages ( id, role, text, audio_url, corrections, created_at )
-        `).eq('user_id', user.id).order('created_at', { ascending: false })
+        `).eq('user_id', user.id).order('created_at', { ascending: false }),
+        supabase.from('user_curriculums').select('*').eq('user_id', user.id).order('start_date', { ascending: false })
       ]);
 
       if (pErr) console.error("Error fetching profiles:", pErr);
@@ -410,6 +450,9 @@ export const useAppStore = create<AppState>()((set, get) => ({
       if (fErr) console.error("Error fetching FSRS cards:", fErr);
       if (mErr) console.error("Error fetching mistakes:", mErr);
       if (convResponse.error) console.error("Error fetching conversations:", convResponse.error);
+      if (curriculumsResponse.error && !isMissingCurriculumsTable(curriculumsResponse.error)) {
+        console.error("Error fetching curriculums:", curriculumsResponse.error);
+      }
 
       if (pData) {
         set({
@@ -524,6 +567,22 @@ export const useAppStore = create<AppState>()((set, get) => ({
             createdAt: c.created_at,
             updatedAt: c.updated_at
           }))
+        });
+      }
+
+      if (curriculumsResponse.data) {
+        const parsedCurriculums: Curriculum[] = curriculumsResponse.data.map((c: any) => ({
+          id: c.id,
+          startDate: c.start_date,
+          endDate: c.end_date,
+          focusAreas: c.focus_areas,
+          tasks: Array.isArray(c.tasks) ? c.tasks : [],
+          status: c.status,
+          createdAt: c.created_at
+        }));
+        set({ 
+          curriculums: parsedCurriculums,
+          activeCurriculum: parsedCurriculums.find((curriculum) => curriculum.status === "active") || null
         });
       }
 
@@ -1051,5 +1110,90 @@ export const useAppStore = create<AppState>()((set, get) => ({
     }
     const conv = get().conversations.find(c => c.id === id);
     if (conv) set({ activeConversation: conv });
+  },
+
+  // ---- Curriculums ----
+  generateCurriculum: async (tasks, focusAreas) => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setDate(startDate.getDate() + 7);
+
+    const newCurriculum: Curriculum = {
+      id: `curr_${Date.now()}`,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      focusAreas,
+      tasks,
+      status: "active",
+      createdAt: new Date().toISOString()
+    };
+
+    set(state => {
+      // Mark any existing active as completed
+      const updatedCurriculums = state.curriculums.map(c => 
+        c.status === 'active' ? { ...c, status: 'completed' as const } : c
+      );
+      return { 
+        curriculums: [newCurriculum, ...updatedCurriculums],
+        activeCurriculum: newCurriculum
+      };
+    });
+
+    const completeExistingResponse = await supabase.from('user_curriculums')
+      .update({ status: 'completed' })
+      .eq('user_id', user.id)
+      .eq('status', 'active');
+
+    if (completeExistingResponse.error && !isMissingCurriculumsTable(completeExistingResponse.error)) {
+      throw completeExistingResponse.error;
+    }
+
+    const insertResponse = await supabase.from('user_curriculums').insert({
+      id: newCurriculum.id,
+      user_id: user.id,
+      start_date: newCurriculum.startDate,
+      end_date: newCurriculum.endDate,
+      focus_areas: newCurriculum.focusAreas,
+      tasks: newCurriculum.tasks,
+      status: newCurriculum.status,
+      created_at: newCurriculum.createdAt
+    });
+
+    if (insertResponse.error && !isMissingCurriculumsTable(insertResponse.error)) {
+      throw insertResponse.error;
+    }
+  },
+
+  markTaskCompleted: async (curriculumId, taskId) => {
+    const supabase = createClient();
+    let updatedTasks: CurriculumTask[] = [];
+
+    set(state => {
+      const updatedCurriculums = state.curriculums.map(c => {
+        if (c.id === curriculumId) {
+          updatedTasks = c.tasks.map(t => 
+            t.id === taskId ? { ...t, isCompleted: true, completedAt: new Date().toISOString() } : t
+          );
+          return { ...c, tasks: updatedTasks };
+        }
+        return c;
+      });
+
+      return {
+        curriculums: updatedCurriculums,
+        activeCurriculum: updatedCurriculums.find((curriculum) => curriculum.status === "active") || null
+      };
+    });
+
+    if (updatedTasks.length > 0) {
+      const updateResponse = await supabase.from('user_curriculums').update({ tasks: updatedTasks }).eq('id', curriculumId);
+      if (updateResponse.error && !isMissingCurriculumsTable(updateResponse.error)) {
+        throw updateResponse.error;
+      }
+    }
   }
 }));
