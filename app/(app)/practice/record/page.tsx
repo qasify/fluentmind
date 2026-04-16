@@ -91,15 +91,15 @@ function RecordContent() {
   const [state, setState] = useState<RecordingState>("idle");
   const [topic, setTopic] = useState("Describe your ideal weekend");
   const [category, setCategory] = useState("Daily Life");
-  
+
   // Timer state
   const [timerDisplay, setTimerDisplay] = useState("00:00");
   const [secondsElapsed, setSecondsElapsed] = useState(0);
-  
+
   // Transcript
   const [transcript, setTranscript] = useState("");
   const [interimTranscript, setInterimTranscript] = useState("");
-  
+
   // Visualizer DB level
   const [dbLevel, setDbLevel] = useState(0);
 
@@ -232,23 +232,23 @@ function RecordContent() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
+
       const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 256;
       source.connect(analyser);
-      
+
       audioContextRef.current = audioCtx;
       analyserRef.current = analyser;
-      
+
       const mediaRecorder = new MediaRecorder(stream);
       chunksRef.current = [];
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       mediaRecorderRef.current = mediaRecorder;
-      
+
       const recognition = initSpeechRecognition();
       if (recognition) {
         recognitionRef.current = recognition;
@@ -262,10 +262,10 @@ function RecordContent() {
       audioAnalysisRef.current = { pauseCount: 0, totalSilenceSeconds: 0, speakingSeconds: 0 };
       isSilentRef.current = true;
       silenceStartRef.current = Date.now();
-      
+
       mediaRecorder.start(1000);
       setState("recording");
-      
+
       processAudioVisualizer();
 
       timerIntervalRef.current = setInterval(() => {
@@ -325,7 +325,7 @@ function RecordContent() {
       const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       // 2. Upload audio to Supabase Storage
       let storageUrl = undefined;
       if (user) {
@@ -345,7 +345,7 @@ function RecordContent() {
       // 3. Generate Ledger Context from persistent Mistakes Ledger
       let pastContext = "No past mistakes recorded yet.";
       const activeMistakes = mistakes.filter(m => m.status === "active");
-      
+
       if (activeMistakes.length > 0) {
         pastContext = `
 ACTIVE MISTAKES LEDGER (The user is actively working on these):
@@ -373,7 +373,7 @@ CRITICAL INSTRUCTIONS FOR YOU:
       });
 
       if (!response.ok) throw new Error("Analysis failed");
-      
+
       const analysisData = await response.json();
 
       // Fix old mistakes if AI says so
@@ -419,7 +419,7 @@ CRITICAL INSTRUCTIONS FOR YOU:
       checkAndUnlockBadges();
 
       router.push(`/evaluation/${sessionId}`);
-      
+
     } catch (error) {
       console.error(error);
       alert("Failed to analyze recording. Please try again.");
@@ -434,7 +434,7 @@ CRITICAL INSTRUCTIONS FOR YOU:
       const distFromCenter = Math.abs(i - numBars / 2) / (numBars / 2);
       const intensity = Math.max(0.1, 1 - distFromCenter);
       const height = state === "recording" ? Math.max(5, dbLevel * intensity * (Math.random() * 0.5 + 0.5)) : 5;
-      
+
       bars.push(
         <div
           key={i}
@@ -447,7 +447,7 @@ CRITICAL INSTRUCTIONS FOR YOU:
   };
 
   return (
-    <div className="page-container min-h-[calc(100vh-2rem)] md:min-h-[calc(100vh-4rem)] flex flex-col relative py-4">
+    <div className="page-container h-[100vh] flex flex-col relative py-4">
 
       {/* Topic Picker Modal */}
       {showTopicPicker && (
@@ -467,11 +467,10 @@ CRITICAL INSTRUCTIONS FOR YOU:
                 <button
                   key={cat.name}
                   onClick={() => setSelectedCategoryIndex(i)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-                    selectedCategoryIndex === i
+                  className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${selectedCategoryIndex === i
                       ? "bg-primary-500/10 text-primary-400 border border-primary-500/20"
                       : "text-[#a0a0b5] hover:text-[#f0f0f5] hover:bg-[rgba(255,255,255,0.03)]"
-                  }`}
+                    }`}
                 >
                   {cat.icon} {cat.name}
                 </button>
@@ -484,11 +483,10 @@ CRITICAL INSTRUCTIONS FOR YOU:
                 <button
                   key={i}
                   onClick={() => selectTopic(t, TOPIC_CATEGORIES[selectedCategoryIndex].name)}
-                  className={`w-full text-left p-4 rounded-xl border transition-all ${
-                    topic === t
+                  className={`w-full text-left p-4 rounded-xl border transition-all ${topic === t
                       ? "bg-primary-500/10 border-primary-500/30"
                       : "bg-background-tertiary border-[rgba(255,255,255,0.06)] hover:border-[rgba(255,255,255,0.12)] hover:bg-background-elevated"
-                  }`}
+                    }`}
                 >
                   <div className="font-medium leading-relaxed">{t}</div>
                 </button>
@@ -513,7 +511,7 @@ CRITICAL INSTRUCTIONS FOR YOU:
           <h1 className="heading-3 mb-1">Recording Studio</h1>
           <p className="text-[#a0a0b5] text-base">Clear your mind and speak naturally.</p>
         </div>
-        
+
         {state === "idle" && (
           <div className="flex items-center gap-2">
             <button
@@ -546,9 +544,9 @@ CRITICAL INSTRUCTIONS FOR YOU:
         {/* Live Transcript / Empty state */}
         <div className="w-full flex-1 min-h-[140px] max-h-[180px] md:max-h-[220px] bg-background-tertiary border border-[rgba(255,255,255,0.06)] rounded-2xl p-6 mb-6 overflow-y-auto flex flex-col relative shrinks-0">
           {state === "idle" && (
-             <div className="m-auto text-[#6b6b80] max-w-sm text-center">
-               Hit record when you&apos;re ready. Try to speak continuously for at least 2 minutes without worrying about mistakes.
-             </div>
+            <div className="m-auto text-[#6b6b80] max-w-sm text-center">
+              Hit record when you&apos;re ready. Try to speak continuously for at least 2 minutes without worrying about mistakes.
+            </div>
           )}
           {state === "recording" && (
             <div className="text-xl leading-relaxed">
@@ -560,11 +558,11 @@ CRITICAL INSTRUCTIONS FOR YOU:
             </div>
           )}
           {state === "processing" && (
-             <div className="m-auto text-center">
-               <div className="w-8 h-8 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin mx-auto mb-4" />
-               <div className="text-lg font-semibold gradient-text animate-pulse">AI is analyzing your speech...</div>
-               <div className="text-sm text-[#a0a0b5] mt-2">Checking grammar, calculating fluency, and identifying filler words.</div>
-             </div>
+            <div className="m-auto text-center">
+              <div className="w-8 h-8 border-4 border-primary-500/30 border-t-primary-500 rounded-full animate-spin mx-auto mb-4" />
+              <div className="text-lg font-semibold gradient-text animate-pulse">AI is analyzing your speech...</div>
+              <div className="text-sm text-[#a0a0b5] mt-2">Checking grammar, calculating fluency, and identifying filler words.</div>
+            </div>
           )}
         </div>
 

@@ -251,6 +251,7 @@ interface AppState {
   updateVocabMastery: (id: string, level: VocabWord["masteryLevel"]) => Promise<void>;
   // FSRS
   reviewWord: (wordId: string, rating: 1 | 2 | 3 | 4) => Promise<void>;
+  getWordsDueForReview: () => VocabWord[];
   // Badges
   checkAndUnlockBadges: () => Promise<Badge[]>;
   // Mistakes
