@@ -50,7 +50,7 @@ export default function ExamPage() {
         </p>
       </div>
 
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="mx-auto space-y-6">
         <div className="grid md:grid-cols-3 gap-4">
           <div className="card p-5 text-center">
             <div className="text-xs text-[#6b6b80] uppercase tracking-wider mb-1">Attempts</div>
@@ -87,40 +87,40 @@ export default function ExamPage() {
         </div>
 
         <div className="grid md:grid-cols-3 gap-6">
-        {IELTS_PARTS.map((part) => (
-          <motion.div
-            key={part.part}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: part.part * 0.15 }}
-            className="card p-6 border border-[rgba(255,255,255,0.05)] hover:border-primary-500/30 transition-all group flex flex-col"
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-14 h-14 rounded-2xl bg-background-tertiary flex items-center justify-center text-2xl shrink-0 group-hover:scale-110 transition-transform">
-                {part.icon}
+          {IELTS_PARTS.map((part) => (
+            <motion.div
+              key={part.part}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: part.part * 0.15 }}
+              className="card p-6 border border-[rgba(255,255,255,0.05)] hover:border-primary-500/30 transition-all group flex flex-col"
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="w-14 h-14 rounded-2xl bg-background-tertiary flex items-center justify-center text-2xl shrink-0 group-hover:scale-110 transition-transform">
+                  {part.icon}
+                </div>
+                <div className="text-right">
+                  <div className={`text-xs font-bold uppercase tracking-widest ${part.color} mb-0.5`}>Part {part.part}</div>
+                  <div className="text-xs text-[#6b6b80]">{part.duration}</div>
+                </div>
               </div>
-              <div className="text-right">
-                <div className={`text-xs font-bold uppercase tracking-widest ${part.color} mb-0.5`}>Part {part.part}</div>
-                <div className="text-xs text-[#6b6b80]">{part.duration}</div>
+              <div className="flex-1 mb-6">
+                <h3 className="heading-4 mb-2">{part.title}</h3>
+                <p className="text-sm text-[#8b8b9d] leading-relaxed">{part.description}</p>
               </div>
-            </div>
-            <div className="flex-1 mb-6">
-              <h3 className="heading-4 mb-2">{part.title}</h3>
-              <p className="text-sm text-[#8b8b9d] leading-relaxed">{part.description}</p>
-            </div>
-            <div className="mt-auto pt-4 border-t border-[rgba(255,255,255,0.04)] flex justify-end">
-              <button
-                onClick={() => {
-                  startExamRun("part", part.part);
-                  router.push("/exam/run");
-                }}
-                className="btn btn-secondary btn-sm"
-              >
-                Practice Part {part.part}
-              </button>
-            </div>
-          </motion.div>
-        ))}
+              <div className="mt-auto pt-4 border-t border-[rgba(255,255,255,0.04)] flex justify-end">
+                <button
+                  onClick={() => {
+                    startExamRun("part", part.part);
+                    router.push("/exam/run");
+                  }}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Practice Part {part.part}
+                </button>
+              </div>
+            </motion.div>
+          ))}
         </div>
 
         <div className="card p-6 border border-dashed border-[rgba(255,255,255,0.08)] text-center">

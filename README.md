@@ -1,5 +1,6 @@
-# 🧠 FluentMind AI
+# 🧠 FluentMind
 
+[fluentmind-ai.vercel.app](https://fluentmind-ai.vercel.app/)
 FluentMind is an advanced, AI-driven language learning platform designed to take English learners from intermediate plateaus to advanced fluency (CEFR B2 to C2+). Unlike simple language apps, FluentMind acts as a relentless, personalized AI tutor that analyzes your speech, tracks persistent errors over time, and dynamically generates a rigorous curriculum based on your unique weaknesses.
 
 ## 🚀 Key Features

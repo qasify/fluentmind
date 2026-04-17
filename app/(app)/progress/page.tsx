@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useAppStore } from "@/lib/store";
 import { motion, type Variants } from "framer-motion";
+import { TrendChart } from "@/components/ui/TrendChart";
 
 const fadeInUp: Variants = {
   hidden: { opacity: 0, y: 20 },
@@ -61,7 +62,7 @@ export default function ProgressPage() {
   // Session score trend (last 10)
   const scoreTrend = useMemo(() => (
     sessions.slice(0, 10).reverse().map((s, i) => ({
-      label: `S${i + 1}`,
+      label: i + 1,
       score: s.analysis.overall?.score ?? 0,
     }))
   ), [sessions]);
@@ -92,8 +93,8 @@ export default function ProgressPage() {
       ? Math.max(...examSessions.map((s) => s.analysis?.fluency?.ieltsBandEstimate ?? 0))
       : 0;
 
-    const examBandTrend = examSessions.slice(0, 10).reverse().map((s, i) => ({
-      label: `E${i + 1}`,
+    const examBandTrend = examSessions.slice(0, 50).reverse().map((s, i) => ({
+      label: i + 1,
       band: s.analysis?.fluency?.ieltsBandEstimate ?? 0,
     }));
 
@@ -197,24 +198,15 @@ export default function ProgressPage() {
                   Exam History →
                 </Link>
               </div>
-              <div className="flex items-end gap-2 h-40">
-                {examBandTrend.map((item, i) => {
-                  const heightPct = (item.band / 9) * 100;
-                  const color = item.band >= 7 ? "bg-success-400" : item.band >= 6 ? "bg-warning-400" : "bg-danger-400";
-                  return (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                      <span className="text-[10px] font-bold">{item.band}</span>
-                      <motion.div
-                        initial={{ height: 0 }}
-                        animate={{ height: `${Math.max(heightPct, 4)}%` }}
-                        transition={{ delay: i * 0.05, duration: 0.4, ease: "easeOut" }}
-                        className={`w-full rounded-t-md ${color} min-h-[4px]`}
-                      />
-                      <span className="text-[9px] text-[#6b6b80]">{item.label}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              <TrendChart
+                data={examBandTrend.map(item => ({
+                  label: item.label,
+                  value: item.band,
+                  color: item.band >= 7 ? "bg-success-400" : item.band >= 6 ? "bg-warning-400" : "bg-danger-400"
+                }))}
+                maxValue={9}
+                height="h-40"
+              />
             </>
           )}
         </div>
@@ -280,23 +272,14 @@ export default function ProgressPage() {
           {scoreTrend.length === 0 ? (
             <div className="text-center py-8 text-[#6b6b80]">Complete sessions to see your score trend</div>
           ) : (
-            <div className="flex items-end gap-2 h-48">
-              {scoreTrend.map((item, i) => {
-                const color = item.score >= 80 ? "bg-success-400" : item.score >= 60 ? "bg-warning-400" : "bg-danger-400";
-                return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <span className="text-xs font-bold">{item.score}</span>
-                    <motion.div
-                      initial={{ height: 0 }}
-                      animate={{ height: `${item.score}%` }}
-                      transition={{ delay: i * 0.08, duration: 0.5, ease: "easeOut" }}
-                      className={`w-full rounded-t-md ${color} min-h-[4px]`}
-                    />
-                    <span className="text-[10px] text-[#6b6b80]">{item.label}</span>
-                  </div>
-                );
-              })}
-            </div>
+            <TrendChart
+              data={scoreTrend.map(item => ({
+                label: item.label,
+                value: item.score
+              }))}
+              maxValue={100}
+              height="h-48"
+            />
           )}
         </div>
       </div>
@@ -310,26 +293,17 @@ export default function ProgressPage() {
           {sessions.length < 2 ? (
             <div className="text-center py-8 text-[#6b6b80]">Complete 2+ sessions to see filler trends</div>
           ) : (
-            <div className="flex items-end gap-2 h-40">
-              {sessions.slice(0, 10).reverse().map((s, i) => {
+            <TrendChart
+              data={sessions.slice(0, 50).reverse().map((s, i) => {
                 const fillers = s.analysis?.clarity?.totalFillers ?? 0;
-                const maxFillers = Math.max(...sessions.slice(0, 10).map(ss => ss.analysis?.clarity?.totalFillers ?? 0), 1);
-                const heightPct = (fillers / maxFillers) * 100;
-                const color = fillers <= 3 ? "bg-success-400" : fillers <= 8 ? "bg-warning-400" : "bg-danger-400";
-                return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1" title={`${fillers} fillers`}>
-                    <span className="text-[10px] font-bold">{fillers}</span>
-                    <motion.div
-                      initial={{ height: 0 }}
-                      animate={{ height: `${Math.max(heightPct, 4)}%` }}
-                      transition={{ delay: i * 0.08, duration: 0.5, ease: "easeOut" }}
-                      className={`w-full rounded-t-md ${color} min-h-[4px]`}
-                    />
-                    <span className="text-[9px] text-[#6b6b80]">S{i + 1}</span>
-                  </div>
-                );
+                return {
+                  label: i + 1,
+                  value: fillers,
+                  color: fillers <= 3 ? "bg-success-400" : fillers <= 8 ? "bg-warning-400" : "bg-danger-400"
+                };
               })}
-            </div>
+              height="h-40"
+            />
           )}
         </div>
 
@@ -377,24 +351,14 @@ export default function ProgressPage() {
           {sessions.length < 2 ? (
             <div className="text-center py-8 text-[#6b6b80]">Complete 2+ sessions to see grammar trends</div>
           ) : (
-            <div className="flex items-end gap-2 h-40">
-              {sessions.slice(0, 10).reverse().map((s, i) => {
-                const score = s.analysis?.grammar?.score ?? 0;
-                const color = score >= 80 ? "bg-success-400" : score >= 60 ? "bg-warning-400" : "bg-danger-400";
-                return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <span className="text-[10px] font-bold">{score}</span>
-                    <motion.div
-                      initial={{ height: 0 }}
-                      animate={{ height: `${Math.max(score, 4)}%` }}
-                      transition={{ delay: i * 0.08, duration: 0.5, ease: "easeOut" }}
-                      className={`w-full rounded-t-md ${color} min-h-[4px]`}
-                    />
-                    <span className="text-[9px] text-[#6b6b80]">S{i + 1}</span>
-                  </div>
-                );
-              })}
-            </div>
+            <TrendChart
+              data={sessions.slice(0, 50).reverse().map((s, i) => ({
+                label: i + 1,
+                value: s.analysis?.grammar?.score ?? 0
+              }))}
+              maxValue={100}
+              height="h-40"
+            />
           )}
         </div>
 
@@ -404,24 +368,14 @@ export default function ProgressPage() {
           {sessions.length < 2 ? (
             <div className="text-center py-8 text-[#6b6b80]">Complete 2+ sessions to see fluency trends</div>
           ) : (
-            <div className="flex items-end gap-2 h-40">
-              {sessions.slice(0, 10).reverse().map((s, i) => {
-                const score = s.analysis?.fluency?.score ?? 0;
-                const color = score >= 80 ? "bg-success-400" : score >= 60 ? "bg-warning-400" : "bg-danger-400";
-                return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <span className="text-[10px] font-bold">{score}</span>
-                    <motion.div
-                      initial={{ height: 0 }}
-                      animate={{ height: `${Math.max(score, 4)}%` }}
-                      transition={{ delay: i * 0.08, duration: 0.5, ease: "easeOut" }}
-                      className={`w-full rounded-t-md ${color} min-h-[4px]`}
-                    />
-                    <span className="text-[9px] text-[#6b6b80]">S{i + 1}</span>
-                  </div>
-                );
-              })}
-            </div>
+            <TrendChart
+              data={sessions.slice(0, 50).reverse().map((s, i) => ({
+                label: i + 1,
+                value: s.analysis?.fluency?.score ?? 0
+              }))}
+              maxValue={100}
+              height="h-40"
+            />
           )}
         </div>
       </div>

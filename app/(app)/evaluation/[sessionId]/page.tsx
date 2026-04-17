@@ -123,7 +123,7 @@ export default function EvaluationPage({
   const activeData = analysis[activeDimension];
 
   return (
-    <div className="page-container fade-in">
+    <div className="page-container fade-in !max-w-5xl self-center">
       {/* Overall Score */}
       <div className="text-center py-10 px-6 mb-8 bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.04)] rounded-3xl backdrop-blur-sm">
         <ScoreCircle score={analysis.overall?.score} />

@@ -48,7 +48,7 @@ export default function ExamRunDetailPage() {
   const overallBand = avgBand(partsSummary.map((p) => p.band).filter((b) => b > 0));
 
   return (
-    <div className="page-container fade-in !max-w-4xl">
+    <div className="page-container fade-in">
       <div className="flex items-start justify-between gap-4 mb-8">
         <div>
           <div className="text-xs uppercase tracking-widest text-[#6b6b80] mb-1">
